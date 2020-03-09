@@ -17,7 +17,7 @@ module common {
 
     const SIZE  : integer = 4;
 
-    procedure common.zero() returns (q : queue_t) {
+    procedure zero() returns (q : queue_t) {
         q.head   = 0;
         q.tail   = 0;
         q.count  = 0;
@@ -27,7 +27,7 @@ module common {
         q.inited = false;
     }
 
-    procedure common.pushQ(in_q : queue_t, d: event_t) returns (out_q : queue_t)
+    procedure pushQ(in_q : queue_t, d: event_t) returns (out_q : queue_t)
         requires !in_q.full;
         requires (in_q.tail >= 0 && in_q.tail < SIZE);
         ensures (out_q.contents == in_q.contents[in_q.tail -> d]);
@@ -91,10 +91,12 @@ module client {
     output updated_input_queue  : queue_t;
     output output_queue         : queue_t;
 
+    instance comm : common();
+
     init {
         state = InitEntry;
-        call (updated_input_queue) = common.zero();
-        call (output_queue)        = common.zero();
+        call (updated_input_queue) = com.zero();
+        call (output_queue)        = com.zero();
     }
 
     next {
@@ -104,7 +106,7 @@ module client {
             } (state == Init) : {
                 if (!input_queue.empty) {
                     var first : event_t;
-                    call (updated_input_queue', first) = common.popQ(input_queue);
+                    call (updated_input_queue', first) = com.popQ(input_queue);
                     if (first == SUCCESS) {
                         state' = SendPingEntry;
                     } else {
@@ -113,11 +115,11 @@ module client {
                 }
             } (state == SendPingEntry) : {
                 state' = SendPing;
-                call (output_queue') = common.pushQ(output_queue, PING);
+                call (output_queue') = com.pushQ(output_queue, PING);
             } (state == SendPing) : {
                 if (!input_queue.empty) {
                     var first : event_t;
-                    call (updated_input_queue', first) = common.popQ(input_queue);
+                    call (updated_input_queue', first) = com.popQ(input_queue);
                     if (first == SUCCESS) {
                         state' = WaitPong;
                     } else {
@@ -127,7 +129,7 @@ module client {
             } (state == WaitPong) : {
                 if (!input_queue.empty) {
                     var first : event_t;
-                    call (updated_input_queue', first) = common.popQ(input_queue);
+                    call (updated_input_queue', first) = com.popQ(input_queue);
                     if (first == PONG) {
                         state' = SendPingEntry;
                     } else {
@@ -152,21 +154,23 @@ module server {
     output updated_input_queue  : queue_t;
     output output_queue         : queue_t;
 
+    instance comm : common();
+
     init {
         state = InitEntry;
-        call (updated_input_queue) = common.zero();
-        call (output_queue)        = common.zero();
+        call (updated_input_queue) = com.zero();
+        call (output_queue)        = com.zero();
     }
 
     next {
         case
             (state == SendPongEntry) : {
                 state' = SendPong;
-                call (output_queue') = common.pushQ(output_queue, PONG);
+                call (output_queue') = com.pushQ(output_queue, PONG);
             } (state == SendPong) : {
                 if (!input_queue.empty) {
                     var first : event_t;
-                    call (updated_input_queue', first) = common.popQ(input_queue);
+                    call (updated_input_queue', first) = com.popQ(input_queue);
                     if (first == SUCCESS) {
                         state' = WaitPing;
                     } else {
@@ -176,7 +180,7 @@ module server {
             } (state == WaitPing) : {
                 if (!input_queue.empty) {
                     var first : event_t;
-                    call (updated_input_queue', first) = common.popQ(input_queue);
+                    call (updated_input_queue', first) = com.popQ(input_queue);
                     if (first == PING) {
                         state' = SendPingEntry;
                     } else {
@@ -210,35 +214,37 @@ module main {
     instance c : client(input_queue : (client_input_queue), updated_input_queue : (client_updated_input_queue), output_queue : (client_output_queue));
     instance s : server(input_queue : (server_input_queue), updated_input_queue : (server_updated_input_queue), output_queue : (server_output_queue));
 
-    init {
-        call (client_input_queue)         = common.zero();
-        call (client_updated_input_queue) = common.zero();
-        call (client_output_queue)        = common.zero();
+    instance comm : common();
 
-        call (server_input_queue)         = common.zero();
-        call (server_updated_input_queue) = common.zero();
-        call (server_output_queue)        = common.zero();
+    init {
+        call (client_input_queue)         = com.zero();
+        call (client_updated_input_queue) = com.zero();
+        call (client_output_queue)        = com.zero();
+
+        call (server_input_queue)         = com.zero();
+        call (server_updated_input_queue) = com.zero();
+        call (server_output_queue)        = com.zero();
     }
 
     next {
         if (client_updated_input_queue.count > server_updated_input_queue.count) {
             if (!client_output_queue.empty) {
                 var first : event_t;
-                call (client_output_queue', first) = common.popQ(client_output_queue);
+                call (client_output_queue', first) = com.popQ(client_output_queue);
                 if (first == SUCCESS) {
-                    client_input_queue' = common.pushQ(client_updated_input_queue, SUCCESS);
+                    client_input_queue' = com.pushQ(client_updated_input_queue, SUCCESS);
                 } else {
-                    server_input_queue' = common.pushQ(server_updated_input_queue, first);
+                    server_input_queue' = com.pushQ(server_updated_input_queue, first);
                 } 
             }
         } else {
             if (!server_output_queue.empty) {
                 var first : event_t;
-                call (server_output_queue', first) = common.popQ(server_output_queue);
+                call (server_output_queue', first) = com.popQ(server_output_queue);
                 if (first == SUCCESS) {
-                    server_input_queue' = common.pushQ(server_updated_input_queue, SUCCESS);
+                    server_input_queue' = com.pushQ(server_updated_input_queue, SUCCESS);
                 } else {
-                    client_input_queue' = common.pushQ(client_updated_input_queue, first);
+                    client_input_queue' = com.pushQ(client_updated_input_queue, first);
                 } 
             }
         }
