@@ -26,7 +26,7 @@ module queue
         then (i + q.head) - SIZE
         else (i + q.head);
 
-  define in_queue(v : integer, q : queue_t) : boolean =
+  define in_queue(v : data_t, q : queue_t) : boolean =
     (exists (i : index_t) :: 
         (i >= 0 && i < q.count) && q.contents[item_index(i, q)] == v);
 
