@@ -4,25 +4,33 @@ module queue
   type index_t = integer;
   type count_t = integer;
   type data_t  = integer;
-  type queue_t = [index_t]data_t;
-  type queue_r = record { contents: queue_t, head : index_t, tail : index_t, count: count_t, inited: boolean, valid: boolean, full: boolean, empty: boolean };
+  type queue_t = record { 
+    contents : [index_t]data_t, 
+    head     : index_t, 
+    tail     : index_t, 
+    count    : count_t, 
+    inited   : boolean, 
+    valid    : boolean, 
+    full     : boolean, 
+    empty    : boolean };
 
-  const SIZE : integer = 4;
-
-  output queue : queue_r;
+  output queue : queue_t;
   input op     : op_t;
   input data   : data_t;
 
-  define item_index(i : index_t, q : queue_r) : index_t =
+  const SIZE   : integer = 4;
+  var curr     : data_t;
+
+  define item_index(i : index_t, q : queue_t) : index_t =
     if ((i + q.head) >= SIZE)
         then (i + q.head) - SIZE
         else (i + q.head);
 
-  define in_queue(v : integer, q : queue_r) : boolean =
+  define in_queue(v : integer, q : queue_t) : boolean =
     (exists (i : index_t) :: 
         (i >= 0 && i < q.count) && q.contents[item_index(i, q)] == v);
 
-  procedure zero() returns (q : queue_r) {
+  procedure zero() returns (q : queue_t) {
     q.head   = 0;
     q.tail   = 0;
     q.count  = 0;
@@ -32,7 +40,7 @@ module queue
     q.inited = false;
   }
 
-  procedure pushQ(in_q : queue_r, d: data_t) returns (out_q : queue_r)
+  procedure pushQ(in_q : queue_t, d: data_t) returns (out_q : queue_t)
     requires !in_q.full;
     requires (in_q.tail >= 0 && in_q.tail < SIZE);
     ensures (out_q.contents == in_q.contents[in_q.tail -> d]);
@@ -56,7 +64,7 @@ module queue
     out_q.inited = in_q.inited;
   }
 
-  procedure popQ(in_q : queue_r) returns (out_q : queue_r)
+  procedure popQ(in_q : queue_t) returns (out_q : queue_t, popped: data_t)
     requires !in_q.empty;
     requires (in_q.head >= 0 && in_q.head < SIZE);
     ensures (out_q.head == if (in_q.head == SIZE-1) then 0 else (in_q.head + 1));
@@ -67,10 +75,12 @@ module queue
     ensures (out_q.full == in_q.full);
     ensures (out_q.empty == in_q.empty);
     ensures (out_q.inited == in_q.inited);
+    ensures (popped == in_q.contents[in_q.head]);
   {
     out_q.head = in_q.head + 1;
     if (out_q.head >= SIZE) { out_q.head = 0; }
     out_q.count = in_q.count - 1;
+    popped = in_q.contents[in_q.head];
 
     out_q.contents = in_q.contents;
     out_q.tail = in_q.tail;
@@ -80,13 +90,13 @@ module queue
     out_q.inited = in_q.inited;
   }
 
-  procedure step(in_q: queue_r, o: op_t, d: data_t) returns (out_q : queue_r) {
+  procedure step(in_q: queue_t, o: op_t, d: data_t) returns (out_q : queue_t, popped: data_t) {
     case
       (o == push && !in_q.full) : {
         call (out_q) = pushQ(in_q, d);
       }
       (o == pop && !in_q.empty) : {
-        call (out_q) = popQ(in_q);
+        call (out_q, popped) = popQ(in_q);
       }
       (true) : {
         out_q = in_q;
@@ -99,7 +109,7 @@ module queue
   }
 
   next {
-    call (queue') = step(queue, op, data);
+    call (queue', curr') = step(queue, op, data);
   }
 
   // count is always between 0 and SIZE.
@@ -117,7 +127,7 @@ module queue
     // no pop when empty
     G(op == pop  ==> !queue.empty)    ==>
     // everything that is pushed will eventually be popped.
-    G((queue.inited && op == push) ==>
+    G((queue.inited && op == push)    ==>
       F(op == pop && queue.contents[queue.head] == data));
 
   invariant[LTL] pushed_value_becomes_head :
@@ -134,6 +144,6 @@ module queue
     vPop  = verify(popQ);
     check;
     print_results;
-    vQ.print_cex(op, data, queue);
+    vQ.print_cex(curr, op, data, queue);
   }
 }
