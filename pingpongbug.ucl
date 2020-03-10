@@ -106,7 +106,7 @@ module client {
                 state' = SendPing;
 
                 // send a ping
-                call (tmp) = com.pushQ(external_output_queue, PING);
+                call (tmp) = com.pushQ(external_output_queue, PONG);
                 // raise succes
                 call (internal_output_queue') = com.pushQ(tmp, SUCCESS);
 
@@ -185,7 +185,7 @@ module server {
                 state' = SendPong;
 
                 // send a Pong
-                call (tmp) = com.pushQ(external_output_queue, PONG);
+                call (tmp) = com.pushQ(external_output_queue, PING);
                 // raise succes
                 call (internal_output_queue') = com.pushQ(tmp, SUCCESS);
 
