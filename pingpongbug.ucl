@@ -267,7 +267,7 @@ module main {
 
     next {
         // TODO decide on composition
-        if (true) {
+        if (*) {
             if (!client_output_queue.empty) {
                 var first : event_t;
                 call (driver_client_output_queue', first) = com.popQ(client_output_queue);
