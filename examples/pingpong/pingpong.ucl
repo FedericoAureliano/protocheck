@@ -47,104 +47,59 @@ module client {
     type queue_t = common.queue_t;
 
     // keep track of the current state
-    var state                    : state_t;
-
-    // this is the info we get from the driver
-    input external_input_queue   : queue_t;
-    input external_output_queue  : queue_t;
-
-    // this is the info we tell the driver
-    output internal_input_queue  : queue_t;
-    output internal_output_queue : queue_t;
+    var state              : state_t;
+    sharedvar input_queue  : queue_t;
+    sharedvar output_queue : queue_t;
 
     // we use this to call the common procedures like push, pop, and zero
     instance com : common();
 
     init {
         state = InitEntry;
-        call (internal_input_queue)  = com.zero();
-        call (internal_output_queue) = com.zero();
+        call (input_queue)  = com.zero();
+        call (output_queue) = com.zero();
     }
 
     next {
         case
             (state == InitEntry) : {
                 state' = Init;
-
-                // raise success
-                call (internal_output_queue') = com.pushQ(external_output_queue, SUCCESS);
-
-                // sync the other queues
-                internal_input_queue'  = external_input_queue;
-
+                call (output_queue') = com.pushQ(output_queue, SUCCESS);
             } (state == Init) : {
-                if (!external_input_queue.empty) {
-                    // pop off an element of the input queue that the driver gave us
-                    // update the internal input queue to reflect this. 
-                    // We'll tell the driver about that later
+                if (!input_queue.empty) {
                     var first : event_t;
-                    call (internal_input_queue', first) = com.popQ(external_input_queue);
-
+                    call (input_queue', first) = com.popQ(input_queue);
                     if (first == SUCCESS) {
                         state' = SendPingEntry;
                     } else {
                         state' = Bad;
                     }
-
-                    // sync the other queues
-                    internal_output_queue'  = external_output_queue;
-
-                } else {
-                    // do nothing except sync all queues
-                    internal_input_queue'  = external_input_queue;
-                    internal_output_queue'  = external_output_queue;
                 }
-
             } (state == SendPingEntry) : {
                 var tmp : queue_t;
-
                 state' = SendPing;
-
-                // send a ping
-                call (tmp) = com.pushQ(external_output_queue, PING);
-                // raise succes
-                call (internal_output_queue') = com.pushQ(tmp, SUCCESS);
-
-                // update the other queues
-                internal_input_queue'  = external_input_queue;
+                call (tmp) = com.pushQ(output_queue, SUCCESS);
+                call (output_queue') = com.pushQ(tmp, PING);
 
             } (state == SendPing) : {
-                if (!external_input_queue.empty) {
+                if (!input_queue.empty) {
                     var first : event_t;
-                    call (internal_input_queue', first) = com.popQ(external_input_queue);
+                    call (input_queue', first) = com.popQ(input_queue);
                     if (first == SUCCESS) {
                         state' = WaitPong;
                     } else {
                         state' = Bad;
                     }
-                    // update the other queues
-                    internal_output_queue'  = external_output_queue;
-                } else {
-                    // do nothing except sync all queues
-                    internal_input_queue'  = external_input_queue;
-                    internal_output_queue'  = external_output_queue;
                 }
-
             } (state == WaitPong) : {
-                if (!external_input_queue.empty) {
+                if (!input_queue.empty) {
                     var first : event_t;
-                    call (internal_input_queue', first) = com.popQ(external_input_queue);
+                    call (input_queue', first) = com.popQ(input_queue);
                     if (first == PONG) {
                         state' = SendPingEntry;
                     } else {
                         state' = Bad;
                     }
-                    // update the other queues
-                    internal_output_queue'  = external_output_queue;
-                } else {
-                    // do nothing except sync all queues
-                    internal_input_queue'  = external_input_queue;
-                    internal_output_queue'  = external_output_queue;
                 }
             }
         esac;
@@ -158,72 +113,46 @@ module server {
     type queue_t = common.queue_t;
 
     // keep track of the current state
-    var state                    : state_t;
-
-    // this is the info we get from the driver
-    input external_input_queue   : queue_t;
-    input external_output_queue  : queue_t;
-
-    // this is the info we tell the driver
-    output internal_input_queue  : queue_t;
-    output internal_output_queue : queue_t;
+    var state              : state_t;
+    sharedvar input_queue  : queue_t;
+    sharedvar output_queue : queue_t;
 
     // we use this to call the common procedures like push, pop, and zero
     instance com : common();
 
     init {
         state = WaitPing;
-        call (internal_input_queue)  = com.zero();
-        call (internal_output_queue) = com.zero();
+        call (input_queue)  = com.zero();
+        call (output_queue) = com.zero();
     }
 
     next {
         case
             (state == SendPongEntry) : {
                 var tmp : queue_t;
-
                 state' = SendPong;
-
-                // send a Pong
-                call (tmp) = com.pushQ(external_output_queue, PONG);
-                // raise succes
-                call (internal_output_queue') = com.pushQ(tmp, SUCCESS);
-
-                // update the other queues
-                internal_input_queue'  = external_input_queue;
+                call (tmp) = com.pushQ(output_queue, SUCCESS);
+                call (output_queue') = com.pushQ(tmp, PONG);
 
             } (state == SendPong) : {
-                if (!external_input_queue.empty) {
+                if (!input_queue.empty) {
                     var first : event_t;
-                    call (internal_input_queue', first) = com.popQ(external_input_queue);
+                    call (input_queue', first) = com.popQ(input_queue);
                     if (first == SUCCESS) {
-                        state' = WaitPong;
+                        state' = WaitPing;
                     } else {
                         state' = Bad;
                     }
-                    // update the other queues
-                    internal_output_queue'  = external_output_queue;
-                } else {
-                    // do nothing except sync all queues
-                    internal_input_queue'  = external_input_queue;
-                    internal_output_queue'  = external_output_queue;
                 }
-
             } (state == WaitPing) : {
-                if (!external_input_queue.empty) {
+                if (!input_queue.empty) {
                     var first : event_t;
-                    call (internal_input_queue', first) = com.popQ(external_input_queue);
+                    call (input_queue', first) = com.popQ(input_queue);
                     if (first == PING) {
-                        state' = SendPingEntry;
+                        state' = SendPongEntry;
                     } else {
                         state' = Bad;
                     }
-                    // update the other queues
-                    internal_output_queue'  = external_output_queue;
-                } else {
-                    // do nothing except sync all queues
-                    internal_input_queue'  = external_input_queue;
-                    internal_output_queue'  = external_output_queue;
                 }
             }
         esac;
@@ -236,82 +165,58 @@ module main {
     type event_t = common.event_t;
     type queue_t = common.queue_t;
 
-    var client_input_queue          : queue_t;
-    var driver_client_input_queue   : queue_t;
+    var client_input_queue  : queue_t;
+    var client_output_queue : queue_t;
+    var server_input_queue  : queue_t;
+    var server_output_queue : queue_t;
 
-    var client_output_queue         : queue_t;
-    var driver_client_output_queue  : queue_t;
-
-    var server_input_queue          : queue_t;
-    var driver_server_input_queue   : queue_t;
-
-    var server_output_queue         : queue_t;
-    var driver_server_output_queue  : queue_t;
-
-    instance c : client(internal_input_queue : (client_input_queue), external_input_queue : (driver_client_input_queue), internal_output_queue : (client_output_queue), external_output_queue : (driver_client_output_queue));
-    instance s : server(internal_input_queue : (server_input_queue), external_input_queue : (driver_server_input_queue), internal_output_queue : (server_output_queue), external_output_queue : (driver_server_output_queue));
+    instance c : client(input_queue : (client_input_queue), output_queue : (client_output_queue));
+    instance s : server(input_queue : (server_input_queue), output_queue : (server_output_queue));
 
     instance com : common();
 
     init {
-        call (client_input_queue)         = com.zero();
-        call (driver_client_input_queue)  = com.zero();
-        call (client_output_queue)        = com.zero();
-        call (driver_client_output_queue) = com.zero();
-
-        call (server_input_queue)         = com.zero();
-        call (driver_server_input_queue)  = com.zero();
-        call (server_output_queue)        = com.zero();
-        call (driver_server_output_queue) = com.zero();
+        call (client_input_queue)  = com.zero();
+        call (client_output_queue) = com.zero();
+        call (server_input_queue)  = com.zero();
+        call (server_output_queue) = com.zero();
     }
 
     next {
-        // TODO decide on composition
         if (*) {
-            if (!client_output_queue.empty) {
-                var first : event_t;
-                call (driver_client_output_queue', first) = com.popQ(client_output_queue);
-
-                // success is a self message, otherwise, send to the server
-                if (first == SUCCESS) {
-                    call (driver_client_input_queue') = com.pushQ(client_input_queue, SUCCESS);
-                    driver_server_output_queue' = server_output_queue;
-                    driver_server_input_queue'  = server_input_queue;
-                } else {
-                    call (driver_server_input_queue') = com.pushQ(server_input_queue, first);
-                    driver_client_input_queue'  = client_input_queue;
-                    driver_server_output_queue' = server_output_queue;
-                }
-            } else {
-                driver_client_output_queue' = client_output_queue;
-                driver_client_input_queue'  = client_input_queue;
-                driver_server_output_queue' = server_output_queue;
-                driver_server_input_queue'  = server_input_queue;
-            }
+            next(c);
+            next(s);
         } else {
-            if (!server_output_queue.empty) {
-                var first : event_t;
-                call (driver_server_output_queue', first) = com.popQ(server_output_queue);
-                
-                // success is a self message, otherwise, send to the client
-                if (first == SUCCESS) {
-                    call (driver_server_input_queue') = com.pushQ(server_input_queue, SUCCESS);
-                    driver_client_output_queue' = client_output_queue;
-                    driver_client_input_queue'  = client_input_queue;
-                } else {
-                    call (driver_client_input_queue') = com.pushQ(client_input_queue, first);
-                    driver_server_input_queue'  = server_input_queue;
-                    driver_client_output_queue' = client_output_queue;
+            if (*) {
+                if (!client_output_queue.empty) {
+                    var first : event_t;
+                    var tmp   : queue_t;
+
+                    call (client_output_queue', first) = com.popQ(client_output_queue);
+
+                    // success is a self message, otherwise, send to the server
+                    if (first == SUCCESS) {
+                        call (client_input_queue') = com.pushQ(client_input_queue, SUCCESS);
+                    } else {
+                        call (server_input_queue') = com.pushQ(server_input_queue, first);
+                    }
                 }
             } else {
-                driver_server_output_queue' = server_output_queue;
-                driver_server_input_queue'  = server_input_queue;
-                driver_client_output_queue' = client_output_queue;
-                driver_client_input_queue'  = client_input_queue;
+                if (!server_output_queue.empty) {
+                    var first : event_t;
+                    var tmp   : queue_t;
+
+                    call (server_output_queue', first) = com.popQ(server_output_queue);
+                    
+                    // success is a self message, otherwise, send to the client
+                    if (first == SUCCESS) {
+                        call (server_input_queue') = com.pushQ(server_input_queue, SUCCESS);
+                    } else {
+                        call (client_input_queue') = com.pushQ(client_input_queue, first);
+                    }
+                }
             }
         }
-        next(c);
-        next(s);
     }
 
     invariant[LTL] good_client : G(c.state != Bad);
@@ -321,6 +226,14 @@ module main {
         v = bmc(10);
         check;
         print_results;
-        v.print_cex(c.state, s.state);
+        v.print_cex(
+            c.state,
+            client_input_queue.count,
+            client_input_queue.contents[client_input_queue.head],
+
+            s.state,
+            server_input_queue.count,
+            server_input_queue.contents[server_input_queue.head]
+        );
     }
 }
