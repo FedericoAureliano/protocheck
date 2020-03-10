@@ -314,8 +314,8 @@ module main {
         next(s);
     }
 
-    invariant[LTL] good_client  : G(c.state != Bad);
-    invariant[LTL] server_client: G(s.state != Bad);
+    invariant[LTL] good_client : G(c.state != Bad);
+    invariant[LTL] good_server : G(s.state != Bad);
 
     control {
         v = bmc(10);
