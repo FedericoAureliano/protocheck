@@ -1,0 +1,166 @@
+module main {
+    // *** TYPE DECLARATIONS ***
+    type machine_id = integer;
+
+    // events
+    type signal_t = enum { PING, PONG, SUCCESS };
+    type event_t = record {
+        signal : signal_t,
+        source : machine_id,
+        target : machine_id
+    };
+
+    // states
+    type state_e = enum { Init, SendPing, WaitPing, WaitPong, SendPong, Bad};
+    type state_t = record {
+        name  : state_e,
+        entry : boolean
+    };
+
+    // event queues
+    type event_id = integer;
+    type count_t = integer;
+    type event_queue_t = record { 
+        contents : [event_id]event_t,
+        head     : event_id, 
+        tail     : event_id, 
+        count    : count_t,
+        empty    : boolean 
+    };
+
+    // machines
+    type kind_t = enum { Client, Server };
+    type machine_t = record {
+        kind   : kind_t,
+        state  : state_t,
+        id     : machine_id,
+        out    : event_queue_t
+    };
+
+    // machine queues
+    type machine_list_t = record { 
+        contents : [machine_id]machine_t,
+        head     : machine_id,
+        tail     : machine_id,
+        count    : count_t,
+        empty    : boolean 
+    };
+
+    // *** PROCEDURE DECLARATIONS ***
+    // procedures for machine queues
+    procedure [inline] resetMachines() returns (q : machine_list_t) {
+        q.head   = 0;
+        q.tail   = 0;
+        q.count  = 0;
+        q.empty  = true;
+    }
+
+    procedure [inline] pushMachine(in_q : machine_list_t, d: machine_t) returns (out_q : machine_list_t) {
+        out_q.contents = in_q.contents[in_q.tail -> d];
+        out_q.head = in_q.head;
+        out_q.tail = in_q.tail + 1;
+        out_q.count = in_q.count + 1;
+        out_q.empty = false;
+    }
+
+    procedure [inline] popMachine(in_q : machine_list_t) returns (out_q : machine_list_t, popped: machine_t) 
+        requires !in_q.empty;
+    {
+        out_q.head = in_q.head + 1;
+        out_q.tail = in_q.tail;
+        out_q.count = in_q.count - 1;
+        out_q.empty = out_q.count == 0;
+
+        popped = in_q.contents[in_q.head];
+        out_q.contents = in_q.contents;
+    }
+
+
+    // procedures for event queues
+    procedure [inline] resetEvents() returns (q : event_queue_t) {
+        q.head   = 0;
+        q.tail   = 0;
+        q.count  = 0;
+        q.empty  = true;
+    }
+
+    procedure [inline] pushEvent(in_q : event_queue_t, d: event_t) returns (out_q : event_queue_t) {
+        out_q.contents = in_q.contents[in_q.tail -> d];
+        out_q.head = in_q.head;
+        out_q.tail = in_q.tail + 1;
+        out_q.count = in_q.count + 1;
+        out_q.empty = false;
+    }
+
+    procedure [inline] popEvent(in_q : event_queue_t) returns (out_q : event_queue_t, popped: event_t) 
+        requires !in_q.empty;
+    {
+        out_q.head = in_q.head + 1;
+        out_q.tail = in_q.tail;
+        out_q.count = in_q.count - 1;
+        out_q.empty = out_q.count == 0;
+
+        popped = in_q.contents[in_q.head];
+        out_q.contents = in_q.contents;
+    }
+
+    // helpers fro transition
+    procedure [inline] createClient(id : machine_id) returns (c : machine_t) {
+        c.kind = Client;
+        c.state.name = Init;
+        c.state.entry = true;
+        c.id = id;
+        call (c.out) = resetEvents();
+    }
+
+    procedure [inline] createServer(id : machine_id) returns (s : machine_t) {
+        s.kind = Server;
+        s.state.name = WaitPing;
+        s.state.entry = true;
+        s.id = id;
+        call (s.out) = resetEvents();
+    }
+
+    // THE DRIVER TRANSITION PROCEDURE
+    procedure [inline] stepAll(old : machine_list_t) returns (new : machine_list_t) {
+        call (new) = resetMachines();
+    }
+
+    // *** ACTUAL DATA ***
+    var machines : machine_list_t;
+
+    init {
+        call (machines) = resetMachines();
+    }
+
+    next {
+        case
+        (machines.count == 0) : {
+            var client : machine_t;
+            call (client)    = createClient(machines.count);
+            call (machines') = pushMachine(machines, client);
+        }
+
+        (machines.count == 1) : {
+            var server : machine_t;
+            call (server)    = createServer(machines.count);
+            call (machines') = pushMachine(machines, server);
+        }
+
+        (machines.count >= 2) : {
+            call (machines') = stepAll(machines);
+        }
+        esac;
+    }
+
+    invariant no_bad : 
+        forall (id : machine_id) :: 
+            (id >= machines.head && id < machines.tail) 
+                ==> machines.contents[id].state.name != Bad;
+
+    control {
+        v = induction;
+        check;
+        print_results;
+    }
+}
