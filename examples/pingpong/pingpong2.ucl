@@ -46,17 +46,6 @@ module main {
 
     // *** PROCEDURE DECLARATIONS ***
     // procedures for machine queues
-    procedure [inline] initMachines() returns (q : machine_list_t) {
-        var client : machine_t;
-
-        q.head   = 0;
-        q.tail   = 0;
-        q.count  = 0;
-
-        call (client) = createClient(q.count);
-        call (q) = pushMachine(q, client);
-    }
-
     procedure [inline] pushMachine(in_q : machine_list_t, d: machine_t) returns (out_q : machine_list_t) {
         out_q.contents = in_q.contents[in_q.tail -> d];
         out_q.head = in_q.head;
@@ -101,7 +90,18 @@ module main {
         out_q.contents = in_q.contents;
     }
 
-    // helpers fro transition
+    // helpers for transition
+    procedure [inline] initMachines() returns (q : machine_list_t) {
+        var client : machine_t;
+
+        q.head   = 0;
+        q.tail   = 0;
+        q.count  = 0;
+
+        call (client) = createClient(q.count);
+        call (q) = pushMachine(q, client);
+    }
+
     procedure [inline] createClient(id : machine_id) returns (c : machine_t) {
         c.kind = Client;
         c.state.name = Init;
@@ -140,7 +140,7 @@ module main {
                             call (m.out) = pushEvent(m.out, success);
 
                             call (server) = createServer(old.count);
-                            call (new) = pushMachine(old, server);
+                            call (new) = pushMachine(new, server);
 
                             m.state.entry = false;
                         }
@@ -191,14 +191,19 @@ module main {
             machines.contents[id].state.name != Bad;
 
     // AUXILLARY INVARIANTS
-    invariant two_machines_not_in_init_or_one_client_in_init : forall (x : machine_id) ::
+    invariant two_machines_not_in_init_entry_or_one_client_in_init_entry : forall (x : machine_id) ::
         (machines.count == 2 && 
-        ((x >= machines.head && x < machines.tail) ==> machines.contents[x].state.name != Init))
+        ((x >= machines.head && x < machines.tail) ==> 
+            (machines.contents[x].state.name != Init || 
+            !machines.contents[x].state.entry)))
         ||
         (machines.count == 1 && 
          machines.contents[machines.head].state.name == Init &&
+         machines.contents[machines.head].state.entry &&
          machines.contents[machines.head].kind == Client
         );
+
+    invariant machine_list_head_and_tail : machines.tail == machines.head + machines.count;
 
     invariant unique_id : 
         forall (x : machine_id) :: 
@@ -209,18 +214,26 @@ module main {
             ) ==> 
                 machines.contents[x].id != machines.contents[y].id;
 
+    invariant one_machine_id_0 : machines.count == 1 ==> machines.contents[machines.head].id == 0;
+
     control {
         v = induction;
         check;
         print_results;
         v.print_cex(
             machines.count,
+            machines.head,
+            machines.tail,
+            
             machines.contents[machines.head].kind,
             machines.contents[machines.head].id,
             machines.contents[machines.head].state.name,
+            machines.contents[machines.head].state.entry,
+
             machines.contents[machines.head+1].kind,
             machines.contents[machines.head+1].id,
-            machines.contents[machines.head+1].state.name
+            machines.contents[machines.head+1].state.name,
+            machines.contents[machines.head+1].state.entry
         );
     }
 }
