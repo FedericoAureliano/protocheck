@@ -4,258 +4,306 @@ module main {
 
     // events
     type signal_t = enum { PING, PONG, SUCCESS };
-    type event_t = record {
-        signal : signal_t,
-        source : machine_id,
-        target : machine_id
+    type event_t  = record {
+        signal: signal_t,
+        source: machine_id,
+        target: machine_id
     };
 
     // states
     type state_e = enum { Init, SendPing, WaitPing, WaitPong, SendPong, Bad};
     type state_t = record {
-        name  : state_e,
-        entry : boolean
+        name : state_e,
+        entry: boolean
     };
 
     // event queues
-    type event_id = integer;
-    type count_t = integer;
+    type event_id      = integer;
+    type count_t       = integer;
     type event_queue_t = record { 
-        data  : [event_id]event_t,
-        head  : event_id, 
-        tail  : event_id,
-        count : count_t
+        data: [event_id]event_t,
+        head: event_id, 
+        tail: event_id,
+        size: count_t
     };
 
     // machines
-    type kind_t = enum { Client, Server };
+    type kind_t    = enum { Client, Server };
     type machine_t = record {
-        id    : machine_id,
-        alive : boolean,
-        kind  : kind_t,
-        state : state_t,
-        out   : event_queue_t
+        id   : machine_id,
+        alive: boolean,
+        kind : kind_t,
+        state: state_t,
+        out  : event_queue_t
     };
 
     // machine queues
     type machine_list_t = record { 
-        data  : [machine_id]machine_t,
-        count : integer
+        data : [machine_id]machine_t,
+        count: integer
     };
 
     // *** PROCEDURE DECLARATIONS ***
     // procedures for event queues
     procedure [inline] resetEvents() 
-        returns (q : event_queue_t) 
+        returns (q: event_queue_t) 
     {
-        q.head   = 0;
-        q.tail   = 0;
-        q.count  = 0;
+        q.head  = 0;
+        q.tail  = 0;
+        q.size = 0;
     }
 
-    procedure [inline] pushEvent(in_q : event_queue_t, d: event_t) 
-        returns (out_q : event_queue_t) 
+    procedure [inline] pushEvent(x: event_queue_t, d: event_t) 
+        returns (y: event_queue_t) 
     {
-        out_q.data = in_q.data[in_q.tail -> d];
-        out_q.head = in_q.head;
-        out_q.tail = in_q.tail + 1;
-        out_q.count = in_q.count + 1;
+        y.data  = x.data[x.tail -> d];
+        y.head  = x.head;
+        y.tail  = x.tail + 1;
+        y.size = x.size + 1;
     }
 
-    procedure [inline] popEvent(in_q : event_queue_t) 
-        returns (out_q : event_queue_t, popped: event_t) 
-        requires in_q.count > 0;
+    procedure [inline] popEvent(x: event_queue_t) 
+        returns (y: event_queue_t, popped: event_t) 
+        requires x.size > 0;
     {
-        out_q.head = in_q.head + 1;
-        out_q.tail = in_q.tail;
-        out_q.count = in_q.count - 1;
+        y.head  = x.head + 1;
+        y.tail  = x.tail;
+        y.size = x.size - 1;
 
-        popped = in_q.data[in_q.head];
-        out_q.data = in_q.data;
+        popped = x.data[x.head];
+        y.data = x.data;
     }
 
     //  MACHINES
-    procedure [inline] addMachine(old : machine_list_t, d: machine_t) 
-        returns (new : machine_list_t) 
+    procedure [inline] addMachine(x: machine_list_t, d: machine_t) 
+        returns (y: machine_list_t) 
         requires d.alive;
-        ensures new.count == old.count + 1;
+        ensures y.count == x.count + 1;
     {
-        new = old;
-        new.data = old.data[old.count -> d];
-        new.count = old.count + 1;
+        y = x;
+
+        y.data = x.data[x.count -> d];
+        y.count = x.count + 1;
     }
 
-    procedure [inline] getMachine(in_q : machine_list_t, id : machine_id) 
+    procedure [inline] getMachine(x: machine_list_t, id: machine_id) 
         returns (m: machine_t) 
-        requires in_q.count > 0;
+        requires x.count > 0;
         requires m.alive;
         ensures m.id == id;
     {
-        m = in_q.data[id];
+        m = x.data[id];
     }
 
-    procedure [inline] deleteMachine(old : machine_list_t, id : machine_id) 
-        returns (new : machine_list_t)
-        requires old.count > 0;
-        requires old.data[id].alive;
-        ensures !new.data[id].alive;
+    procedure [inline] deleteMachine(x: machine_list_t, id: machine_id) 
+        returns (y: machine_list_t)
+        requires x.count > 0;
+        requires x.data[id].alive;
+        ensures !y.data[id].alive;
     {
-        var m : machine_t;
-        m = old.data[id];
+        var m: machine_t;
+
+        m = x.data[id];
+
         m.alive = false;
-        new.data = old.data[id -> m];
+        y.data  = x.data[id -> m];
     }
 
     procedure [inline] initMachines() 
-        returns (new : machine_list_t)
-        ensures new.count == 1;
-        ensures new.data[0].alive;
-        ensures new.data[0].kind == Client;
-        ensures new.data[0].state.name == Init;
-        ensures new.data[0].state.entry;
-        ensures new.data[0].out.count == 0;
+        returns (y: machine_list_t)
+        ensures y.count == 1;
+        ensures y.data[0].alive;
+        ensures y.data[0].kind == Client;
+        ensures y.data[0].state.name == Init;
+        ensures y.data[0].state.entry;
+        ensures y.data[0].out.size == 0;
     {
-        var client : machine_t;
-        var tmp    : machine_list_t;
+        var client: machine_t;
+        var tmp   : machine_list_t;
+
         tmp.count = 0;
 
         call (client) = createClient(tmp.count);
-        call (new) = addMachine(tmp, client);
+        call (y)      = addMachine(tmp, client);
     }
 
-    procedure [inline] createClient(id : machine_id) 
-        returns (c : machine_t) 
+    procedure [inline] createClient(id: machine_id) 
+        returns (c: machine_t) 
     {
-        c.id = id;
-        c.alive = true;
-        c.kind = Client;
-        c.state.name = Init;
+        c.id          = id;
+        c.alive       = true;
+        c.kind        = Client;
+        c.state.name  = Init;
         c.state.entry = true;
-        call (c.out) = resetEvents();
+        call (c.out)  = resetEvents();
     }
 
-    procedure [inline] createServer(id : machine_id) 
-        returns (s : machine_t) 
+    procedure [inline] createServer(id: machine_id) 
+        returns (s: machine_t) 
     {
-        s.id = id;
-        s.alive = true;
-        s.kind = Server;
-        s.state.name = WaitPing;
+        s.id          = id;
+        s.alive       = true;
+        s.kind        = Server;
+        s.state.name  = WaitPing;
         s.state.entry = true;
-        call (s.out) = resetEvents();
+        call (s.out)  = resetEvents();
     }
 
-    procedure [inline] clientInitEntry(id : machine_id, old : machine_list_t) 
-        returns (new : machine_list_t) 
-        requires old.data[id].alive;
-        requires old.data[id].kind == Client; 
-        requires old.data[id].state.name == Init; 
-        requires old.data[id].state.entry;
-        ensures new.data[id].alive;
-        ensures new.data[id].kind == Client; 
-        ensures new.data[id].state.name == Init; 
-        ensures !new.data[id].state.entry;
-        ensures new.count == old.count + 1;
+    procedure [inline] clientInitEntry(id: machine_id, x: machine_list_t) 
+        returns (y: machine_list_t) 
+        requires x.data[id].alive;
+        requires x.data[id].kind == Client; 
+        requires x.data[id].state.name == Init; 
+        requires x.data[id].state.entry;
+        ensures y.data[id].alive;
+        ensures y.data[id].kind == Client; 
+        ensures y.data[id].state.name == Init; 
+        ensures !y.data[id].state.entry;
+        ensures y.count == x.count + 1;
     {
-        var success : event_t;
-        var server  : machine_t;
-        var client  : machine_t;
+        var success: event_t;
+        var server : machine_t;
+        var client : machine_t;
 
-        client = old.data[id];
-        new    = old;
+        client = x.data[id];
+        y      = x;
 
         success.signal = SUCCESS;
         success.source = client.id;
         success.target = client.id;
 
         call (client.out) = pushEvent(client.out, success);
-        call (server)     = createServer(old.count); // bug in UCLID when old is replaced by new?
-        call (new)        = addMachine(old, server);
+        call (server)     = createServer(x.count); // bug in UCLID when x is replaced by y?
+        call (y)          = addMachine(x, server);
 
         client.state.entry = false;
 
-        new.data = new.data[id -> client];
+        y.data = y.data[id -> client];
     }
 
-    procedure [inline] clientSendPingEntry(id : machine_id, old : machine_list_t) 
-        returns (new : machine_list_t) 
-        requires old.data[id].alive;
-        requires old.data[id].kind == Client;
-        requires old.data[id].state.name == SendPing; 
-        requires old.data[id].state.entry;
-        ensures new.data[id].alive;
-        ensures new.data[id].kind == Client;
-        ensures new.data[id].state.name == SendPing; 
-        ensures !new.data[id].state.entry;
-        ensures new.count == old.count;
-        // ensures new.data[id].data[new.data[id].head].signal == PING; //bug in UCLID?
+    procedure [inline] clientSendPingEntry(id: machine_id, x: machine_list_t) 
+        returns (y: machine_list_t) 
+        requires x.data[id].alive;
+        requires x.data[id].kind == Client;
+        requires x.data[id].state.name == SendPing; 
+        requires x.data[id].state.entry;
+        ensures y.data[id].alive;
+        ensures y.data[id].kind == Client;
+        ensures y.data[id].state.name == SendPing; 
+        ensures !y.data[id].state.entry;
+        ensures y.count == x.count;
+        // ensures y.data[id].data[y.data[id].head].signal == PING; //bug in UCLID?
     {
-        var success : event_t;
-        var ping    : event_t;
-        var client  : machine_t;
-        var tmp     : machine_t;
+        var success: event_t;
+        var ping   : event_t;
+        var client : machine_t;
+        var tmp    : machine_t;
 
-        tmp = old.data[id];
+        tmp = x.data[id];
 
         success.signal = SUCCESS;
         success.source = client.id;
         success.target = client.id;
-        call (tmp.out) = pushEvent(old.data[id].out, success);
+        call (tmp.out) = pushEvent(x.data[id].out, success);
 
         client = tmp;
 
-        ping.signal = PING;
-        ping.source = client.id;
-        ping.target = client.id + 1; // better way to do this?
+        ping.signal       = PING;
+        ping.source       = client.id;
+        ping.target       = client.id + 1; // better way to do this?
         call (client.out) = pushEvent(tmp.out, ping);
 
         client.state.entry = false;
 
-        new = old;
-        new.data = old.data[id -> client];
+        y = x;
+        y.data = x.data[id -> client];
     }
 
-    procedure [inline] actions(old : machine_list_t) 
-        returns (new : machine_list_t) 
-        requires old.count > 0;
-        ensures new.count > 0;
+    procedure [inline] serverSendPongEntry(id: machine_id, x: machine_list_t) 
+        returns (y: machine_list_t) 
+        requires x.data[id].alive;
+        requires x.data[id].kind == Server;
+        requires x.data[id].state.name == SendPong;
+        requires x.data[id].state.entry;
+        ensures y.data[id].alive;
+        ensures y.data[id].kind == Server;
+        ensures y.data[id].state.name == SendPong;
+        ensures !y.data[id].state.entry;
+        ensures y.count == x.count;
+        // ensures y.data[id].data[y.data[id].head].signal == PONG; //bug in UCLID?
     {
-        var choice : machine_id;
-        assume(choice >= 0 && choice < old.count && old.data[choice].alive);
+        var success: event_t;
+        var pong   : event_t;
+        var server : machine_t;
+        var tmp    : machine_t;
 
-        new = old;
+        tmp = x.data[id];
+
+        success.signal = SUCCESS;
+        success.source = server.id;
+        success.target = server.id;
+        call (tmp.out) = pushEvent(x.data[id].out, success);
+
+        server = tmp;
+
+        pong.signal       = PONG;
+        pong.source       = server.id;
+        pong.target       = server.id - 1; // better way to do this?
+        call (server.out) = pushEvent(tmp.out, pong);
+
+        server.state.entry = false;
+
+        y = x;
+        y.data = x.data[id -> server];
+    }
+
+    procedure [inline] actions(x: machine_list_t) 
+        returns (y: machine_list_t) 
+        requires x.count > 0;
+        ensures y.count > 0;
+    {
+        var choice: machine_id;
+        assume(choice >= 0 && choice < x.count && x.data[choice].alive);
+
+        y = x;
 
         case 
-            (new.data[choice].kind == Client) : {
+            (y.data[choice].kind == Client): {
                 case
-                    (new.data[choice].state.name == Init) : {
-                        if (new.data[choice].state.entry) {
-                            call (new) = clientInitEntry(choice, old);
+                    (y.data[choice].state.name == Init): {
+                        if (y.data[choice].state.entry) {
+                            call (y) = clientInitEntry(choice, x);
                         }
                     }
-                    (new.data[choice].state.name == SendPing) : {
-                        if (new.data[choice].state.entry) {
-                            call (new) = clientSendPingEntry(choice, old);
+                    (y.data[choice].state.name == SendPing): {
+                        if (y.data[choice].state.entry) {
+                            call (y) = clientSendPingEntry(choice, x);
                         }
                     }
                 esac
             }
-            (new.data[choice].kind == Server) : {
-
+            (y.data[choice].kind == Server): {
+                case
+                    (y.data[choice].state.name == SendPong): {
+                        if (y.data[choice].state.entry) {
+                            call (y) = serverSendPongEntry(choice, x);
+                        }
+                    }
+                esac
             }
         esac
     }
 
-    procedure [inline] reactions(old : machine_list_t) 
-        returns (new : machine_list_t) 
-        requires old.count > 0;
-        ensures new.count > 0;
+    procedure [inline] reactions(x: machine_list_t) 
+        returns (y: machine_list_t) 
+        requires x.count > 0;
+        ensures y.count > 0;
     {
-        new = old;
+        y = x;
     }
 
     // *** ACTUAL DATA ***
-    var machines : machine_list_t;
+    var machines: machine_list_t;
 
     // *** TRANSITION SYSTEM ***
     init {
@@ -271,12 +319,12 @@ module main {
     }
 
     // MAIN INVARIANT
-    invariant never_bad : 
-        forall (id : machine_id) :: (id >= 0 && id < machines.count && machines.data[id].alive) ==> 
+    invariant never_bad: 
+        forall (id: machine_id) :: (id >= 0 && id < machines.count && machines.data[id].alive) ==> 
             machines.data[id].state.name != Bad;
 
     // AUXILLARY INVARIANTS
-    invariant two_machines_not_in_init_entry_or_one_client_in_init_entry : forall (x : machine_id) ::
+    invariant two_machines_not_in_init_entry_or_one_client_in_init_entry: forall (x: machine_id) ::
         (machines.count == 2 && 
         ((x >= 0 && x < machines.count) ==> 
             machines.data[x].alive && 
