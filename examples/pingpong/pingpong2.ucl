@@ -33,14 +33,14 @@ module main {
         id   : machine_id,
         alive: boolean,
         kind : kind_t,
-        state: state_t,
-        out  : event_queue_t
+        state: state_t
     };
 
     // machine queues
     type machine_list_t = record { 
         data : [machine_id]machine_t,
-        count: integer
+        count: integer,
+        out  : event_queue_t
     };
 
     // *** PROCEDURE DECLARATIONS ***
@@ -116,15 +116,16 @@ module main {
         ensures y.data[0].kind == Client;
         ensures y.data[0].state.name == Init;
         ensures y.data[0].state.entry;
-        ensures y.data[0].out.size == 0;
+        ensures y.out.size == 0;
     {
         var client: machine_t;
         var tmp   : machine_list_t;
 
         tmp.count = 0;
 
-        call (client) = createClient(tmp.count);
-        call (y)      = addMachine(tmp, client);
+        call (tmp.out) = resetEvents();
+        call (client)  = createClient(tmp.count);
+        call (y)       = addMachine(tmp, client);
     }
 
     procedure [inline] createClient(id: machine_id) 
@@ -135,7 +136,6 @@ module main {
         c.kind        = Client;
         c.state.name  = Init;
         c.state.entry = true;
-        call (c.out)  = resetEvents();
     }
 
     procedure [inline] createServer(id: machine_id) 
@@ -146,7 +146,6 @@ module main {
         s.kind        = Server;
         s.state.name  = WaitPing;
         s.state.entry = true;
-        call (s.out)  = resetEvents();
     }
 
     procedure [inline] clientInitEntry(id: machine_id, x: machine_list_t) 
@@ -164,17 +163,18 @@ module main {
         var success: event_t;
         var server : machine_t;
         var client : machine_t;
+        var tmp    : machine_list_t;
 
         client = x.data[id];
-        y      = x;
+        tmp    = x;
 
         success.signal = SUCCESS;
         success.source = client.id;
         success.target = client.id;
 
-        call (client.out) = pushEvent(client.out, success);
-        call (server)     = createServer(x.count); // bug in UCLID when x is replaced by y?
-        call (y)          = addMachine(x, server);
+        call (tmp.out)    = pushEvent(x.out, success);
+        call (server)     = createServer(x.count);
+        call (y)          = addMachine(tmp, server);
 
         client.state.entry = false;
 
@@ -197,26 +197,28 @@ module main {
         var success: event_t;
         var ping   : event_t;
         var client : machine_t;
-        var tmp    : machine_t;
+        var tmp1   : machine_list_t;
+        var tmp2   : machine_list_t;
 
-        tmp = x.data[id];
+        client = x.data[id];
 
         success.signal = SUCCESS;
         success.source = client.id;
         success.target = client.id;
-        call (tmp.out) = pushEvent(x.data[id].out, success);
 
-        client = tmp;
+        tmp1 = x;
+        call (tmp1.out) = pushEvent(x.out, success);
 
         ping.signal       = PING;
         ping.source       = client.id;
         ping.target       = client.id + 1; // better way to do this?
-        call (client.out) = pushEvent(tmp.out, ping);
 
         client.state.entry = false;
 
-        y = x;
-        y.data = x.data[id -> client];
+        tmp2 = tmp1;
+        call (tmp2.out) = pushEvent(tmp1.out, ping);
+        y = tmp2;
+        y.data = tmp2.data[id -> client];
     }
 
     procedure [inline] serverSendPongEntry(id: machine_id, x: machine_list_t) 
@@ -235,29 +237,31 @@ module main {
         var success: event_t;
         var pong   : event_t;
         var server : machine_t;
-        var tmp    : machine_t;
+        var tmp1   : machine_list_t;
+        var tmp2   : machine_list_t;
 
-        tmp = x.data[id];
+        server = x.data[id];
 
         success.signal = SUCCESS;
         success.source = server.id;
         success.target = server.id;
-        call (tmp.out) = pushEvent(x.data[id].out, success);
 
-        server = tmp;
+        tmp1 = x;
+        call (tmp1.out) = pushEvent(x.out, success);
 
         pong.signal       = PONG;
         pong.source       = server.id;
         pong.target       = server.id - 1; // better way to do this?
-        call (server.out) = pushEvent(tmp.out, pong);
 
         server.state.entry = false;
 
-        y = x;
-        y.data = x.data[id -> server];
+        tmp2 = tmp1;
+        call (tmp2.out) = pushEvent(tmp1.out, pong);
+        y = tmp2;
+        y.data = tmp2.data[id -> server];
     }
 
-    procedure [inline] actions(x: machine_list_t) 
+    procedure [inline] send(x: machine_list_t) 
         returns (y: machine_list_t) 
         requires x.count > 0;
         ensures y.count > 0;
@@ -294,7 +298,7 @@ module main {
         esac
     }
 
-    procedure [inline] reactions(x: machine_list_t) 
+    procedure [inline] receive(x: machine_list_t) 
         returns (y: machine_list_t) 
         requires x.count > 0;
         ensures y.count > 0;
@@ -312,9 +316,9 @@ module main {
 
     next {
         if (*) {
-            call (machines') = actions(machines);
+            call (machines') = send(machines);
         } else {
-            call (machines') = reactions(machines);
+            call (machines') = receive(machines);
         }
     }
 
@@ -344,6 +348,7 @@ module main {
         print_results;
         v.print_cex(
             machines.count,
+            machines.out.size,
             
             machines.data[0].alive,
             machines.data[0].kind,
