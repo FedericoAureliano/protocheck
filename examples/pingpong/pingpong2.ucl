@@ -148,6 +148,137 @@ module main {
         s.state.entry = true;
     }
 
+    procedure [inline] gotoBad(id: machine_id, x: machine_list_t) 
+        returns (y: machine_list_t) 
+        requires x.data[id].alive;
+        ensures y.data[id].alive;
+        ensures y.data[id].kind == x.data[id].kind; 
+        ensures y.data[id].state.name == Bad;
+        ensures y.count == x.count;
+    {
+        var m   : machine_t;
+
+        m = x.data[id];
+        y = x;
+        m.state.name = Bad;
+        y.data       = x.data[id -> m];
+    }
+
+    procedure [inline] clientInit(e: event_t, x: machine_list_t) 
+        returns (y: machine_list_t) 
+        requires x.data[e.target].alive;
+        requires x.data[e.target].kind == Client;
+        ensures y.data[e.target].alive;
+        ensures y.data[e.target].kind == x.data[e.target].kind; 
+        ensures y.count == x.count;
+    {
+        var m   : machine_t;
+
+        m = x.data[e.target];
+        y = x;
+
+        if (e.signal == SUCCESS) {
+            m.state.entry = true;
+            m.state.name = SendPing;
+        } else {
+            m.state.name = Bad;
+        }
+
+        y.data = x.data[e.target -> m];
+    }
+
+    procedure [inline] clientSendPing(e: event_t, x: machine_list_t) 
+        returns (y: machine_list_t) 
+        requires x.data[e.target].alive;
+        requires x.data[e.target].kind == Client;
+        ensures y.data[e.target].alive;
+        ensures y.data[e.target].kind == x.data[e.target].kind; 
+        ensures y.count == x.count;
+    {
+        var m   : machine_t;
+
+        m = x.data[e.target];
+        y = x;
+
+        if (e.signal == SUCCESS) {
+            m.state.entry = true;
+            m.state.name = WaitPong;
+        } else {
+            m.state.name = Bad;
+        }
+
+        y.data = x.data[e.target -> m];
+    }
+
+    procedure [inline] clientWaitPong(e: event_t, x: machine_list_t) 
+        returns (y: machine_list_t) 
+        requires x.data[e.target].alive;
+        requires x.data[e.target].kind == Client;
+        ensures y.data[e.target].alive;
+        ensures y.data[e.target].kind == x.data[e.target].kind; 
+        ensures y.count == x.count;
+    {
+        var m   : machine_t;
+
+        m = x.data[e.target];
+        y = x;
+
+        if (e.signal == PONG) {
+            m.state.entry = true;
+            m.state.name = SendPing;
+        } else {
+            m.state.name = Bad;
+        }
+
+        y.data = x.data[e.target -> m];
+    }
+
+    procedure [inline] serverSendPong(e: event_t, x: machine_list_t) 
+        returns (y: machine_list_t) 
+        requires x.data[e.target].alive;
+        requires x.data[e.target].kind == Server;
+        ensures y.data[e.target].alive;
+        ensures y.data[e.target].kind == x.data[e.target].kind; 
+        ensures y.count == x.count;
+    {
+        var m   : machine_t;
+
+        m = x.data[e.target];
+        y = x;
+
+        if (e.signal == SUCCESS) {
+            m.state.entry = true;
+            m.state.name = WaitPing;
+        } else {
+            m.state.name = Bad;
+        }
+
+        y.data = x.data[e.target -> m];
+    }
+
+    procedure [inline] serverWaitPing(e: event_t, x: machine_list_t) 
+        returns (y: machine_list_t) 
+        requires x.data[e.target].alive;
+        requires x.data[e.target].kind == Server;
+        ensures y.data[e.target].alive;
+        ensures y.data[e.target].kind == x.data[e.target].kind; 
+        ensures y.count == x.count;
+    {
+        var m   : machine_t;
+
+        m = x.data[e.target];
+        y = x;
+
+        if (e.signal == PING) {
+            m.state.entry = true;
+            m.state.name = SendPong;
+        } else {
+            m.state.name = Bad;
+        }
+
+        y.data = x.data[e.target -> m];
+    }
+
     procedure [inline] clientInitEntry(id: machine_id, x: machine_list_t) 
         returns (y: machine_list_t) 
         requires x.data[id].alive;
@@ -300,10 +431,70 @@ module main {
 
     procedure [inline] receive(x: machine_list_t) 
         returns (y: machine_list_t) 
-        requires x.count > 0;
-        ensures y.count > 0;
+        requires x.out.size > 0;
+        ensures y.out.size == x.out.size - 1;
     {
-        y = x;
+        var e  : event_t;
+        var tmp: machine_list_t; 
+
+        tmp = x;
+        call (tmp.out, e) = popEvent(x.out);
+
+        // case switch on every state of the entire system
+        case 
+        (x.data[e.target].state.name == Init) : 
+        {
+            if (x.data[e.target].kind == Client) {
+                if (!x.data[e.target].state.entry) {
+                    call (y) = clientInit(e, tmp);
+                } else {
+                    call (y) = gotoBad(e.target, tmp);
+                }
+            } else {
+                call (y) = gotoBad(e.target, tmp);
+            }
+        }
+        (x.data[e.target].state.name == WaitPong) : 
+        {
+            if (x.data[e.target].kind == Client) {
+                call (y) = clientWaitPong(e, tmp);
+            } else {
+                call (y) = gotoBad(e.target, tmp);
+            }
+        }
+        (x.data[e.target].state.name == SendPing) : 
+        {
+            if (x.data[e.target].kind == Client) {
+                if (!x.data[e.target].state.entry) {
+                    call (y) = clientSendPing(e, tmp);
+                } else {
+                    call (y) = gotoBad(e.target, tmp);
+                }
+            } else {
+                call (y) = gotoBad(e.target, tmp);
+            }
+        }
+        (x.data[e.target].state.name == WaitPing) : 
+        {
+            if (x.data[e.target].kind == Server) {
+                call (y) = serverWaitPing(e, tmp);
+            } else {
+                call (y) = gotoBad(e.target, tmp);
+            }
+        }
+        (x.data[e.target].state.name == SendPong) : 
+        {
+            if (x.data[e.target].kind == Server) {
+                if (!x.data[e.target].state.entry) {
+                    call (y) = serverSendPong(e, tmp);
+                } else {
+                    call (y) = gotoBad(e.target, tmp);
+                }
+            } else {
+                call (y) = gotoBad(e.target, tmp);
+            }
+        }
+        esac
     }
 
     // *** ACTUAL DATA ***
@@ -318,6 +509,7 @@ module main {
         if (*) {
             call (machines') = send(machines);
         } else {
+            assume(machines.out.size > 0);
             call (machines') = receive(machines);
         }
     }
