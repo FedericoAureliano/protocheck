@@ -48,23 +48,27 @@ module main {
     procedure [inline] resetEvents() 
         returns (q: event_queue_t) 
     {
-        q.head  = 0;
-        q.tail  = 0;
+        q.head = 0;
+        q.tail = 0;
         q.size = 0;
     }
 
     procedure [inline] pushEvent(x: event_queue_t, d: event_t) 
-        returns (y: event_queue_t) 
+        returns (y: event_queue_t)
+        requires x.tail - x.head == x.size;
+        ensures y.tail - y.head == y.size;
+        ensures y.data[y.tail - 1] == d;
     {
-        y.data  = x.data[x.tail -> d];
-        y.head  = x.head;
-        y.tail  = x.tail + 1;
+        y.data = x.data[x.tail -> d];
+        y.head = x.head;
+        y.tail = x.tail + 1;
         y.size = x.size + 1;
     }
 
     procedure [inline] popEvent(x: event_queue_t) 
         returns (y: event_queue_t, popped: event_t) 
         requires x.size > 0;
+        ensures popped == x.data[x.head];
     {
         y.head  = x.head + 1;
         y.tail  = x.tail;
@@ -79,6 +83,8 @@ module main {
         returns (y: machine_list_t) 
         requires d.alive;
         ensures y.count == x.count + 1;
+        ensures y.out == x.out;
+        ensures d.id == y.count - 1;
     {
         y = x;
 
@@ -155,6 +161,9 @@ module main {
         ensures y.data[id].kind == x.data[id].kind; 
         ensures y.data[id].state.name == Bad;
         ensures y.count == x.count;
+        requires x.data[x.out.data[x.out.tail - 1].target].alive;
+        ensures y.data[y.out.data[y.out.tail - 1].target].alive;
+        ensures y.out.size == x.out.size;
     {
         var m   : machine_t;
 
@@ -168,9 +177,12 @@ module main {
         returns (y: machine_list_t) 
         requires x.data[e.target].alive;
         requires x.data[e.target].kind == Client;
+        requires x.data[x.out.data[x.out.tail - 1].target].alive;
+        ensures y.data[y.out.data[y.out.tail - 1].target].alive;
         ensures y.data[e.target].alive;
         ensures y.data[e.target].kind == x.data[e.target].kind; 
         ensures y.count == x.count;
+        ensures y.out.size == x.out.size;
     {
         var m   : machine_t;
 
@@ -191,9 +203,12 @@ module main {
         returns (y: machine_list_t) 
         requires x.data[e.target].alive;
         requires x.data[e.target].kind == Client;
+        requires x.data[x.out.data[x.out.tail - 1].target].alive;
+        ensures y.data[y.out.data[y.out.tail - 1].target].alive;
         ensures y.data[e.target].alive;
         ensures y.data[e.target].kind == x.data[e.target].kind; 
         ensures y.count == x.count;
+        ensures y.out.size == x.out.size;
     {
         var m   : machine_t;
 
@@ -214,9 +229,12 @@ module main {
         returns (y: machine_list_t) 
         requires x.data[e.target].alive;
         requires x.data[e.target].kind == Client;
+        requires x.data[x.out.data[x.out.tail - 1].target].alive;
+        ensures y.data[y.out.data[y.out.tail - 1].target].alive;
         ensures y.data[e.target].alive;
         ensures y.data[e.target].kind == x.data[e.target].kind; 
         ensures y.count == x.count;
+        ensures y.out.size == x.out.size;
     {
         var m   : machine_t;
 
@@ -237,9 +255,12 @@ module main {
         returns (y: machine_list_t) 
         requires x.data[e.target].alive;
         requires x.data[e.target].kind == Server;
+        requires x.data[x.out.data[x.out.tail - 1].target].alive;
+        ensures y.data[y.out.data[y.out.tail - 1].target].alive;
         ensures y.data[e.target].alive;
         ensures y.data[e.target].kind == x.data[e.target].kind; 
         ensures y.count == x.count;
+        ensures y.out.size == x.out.size;
     {
         var m   : machine_t;
 
@@ -260,9 +281,12 @@ module main {
         returns (y: machine_list_t) 
         requires x.data[e.target].alive;
         requires x.data[e.target].kind == Server;
+        requires x.data[x.out.data[x.out.tail - 1].target].alive;
+        ensures y.data[y.out.data[y.out.tail - 1].target].alive;
         ensures y.data[e.target].alive;
         ensures y.data[e.target].kind == x.data[e.target].kind; 
         ensures y.count == x.count;
+        ensures y.out.size == x.out.size;
     {
         var m   : machine_t;
 
@@ -285,11 +309,15 @@ module main {
         requires x.data[id].kind == Client; 
         requires x.data[id].state.name == Init; 
         requires x.data[id].state.entry;
+        requires x.out.size >= 0;
+        requires x.out.tail - x.out.head == x.out.size;
         ensures y.data[id].alive;
         ensures y.data[id].kind == Client; 
-        ensures y.data[id].state.name == Init; 
+        ensures y.data[id].state.name == Init;
         ensures !y.data[id].state.entry;
         ensures y.count == x.count + 1;
+        ensures y.out.size == x.out.size + 1;
+        ensures y.data[y.out.data[y.out.tail - 1].target].alive;
     {
         var success: event_t;
         var server : machine_t;
@@ -300,30 +328,35 @@ module main {
         tmp    = x;
 
         success.signal = SUCCESS;
-        success.source = client.id;
-        success.target = client.id;
+        success.source = id;
+        success.target = id;
 
-        call (tmp.out)    = pushEvent(x.out, success);
-        call (server)     = createServer(x.count);
-        call (y)          = addMachine(tmp, server);
+        call (tmp.out) = pushEvent(x.out, success);
+        call (server)  = createServer(x.count);
+        call (y)       = addMachine(tmp, server);
 
         client.state.entry = false;
 
         y.data = y.data[id -> client];
     }
 
-    procedure [inline] clientSendPingEntry(id: machine_id, x: machine_list_t) 
-        returns (y: machine_list_t) 
-        requires x.data[id].alive;
-        requires x.data[id].kind == Client;
-        requires x.data[id].state.name == SendPing; 
-        requires x.data[id].state.entry;
-        ensures y.data[id].alive;
-        ensures y.data[id].kind == Client;
-        ensures y.data[id].state.name == SendPing; 
-        ensures !y.data[id].state.entry;
+    procedure [inline] clientSendPingEntry(s: machine_id, t: machine_id, x: machine_list_t) 
+        returns (y: machine_list_t)
+        requires x.data[s].alive; 
+        requires x.data[t].alive;
+        requires x.data[s].kind == Client;
+        requires x.data[s].state.name == SendPing; 
+        requires x.data[s].state.entry;
+        requires x.out.size >= 0;
+        requires x.out.tail - x.out.head == x.out.size;
+        ensures y.data[s].alive;
+        ensures y.data[s].kind == Client;
+        ensures y.data[s].state.name == SendPing; 
+        ensures !y.data[s].state.entry;
         ensures y.count == x.count;
-        // ensures y.data[id].data[y.data[id].head].signal == PING; //bug in UCLID?
+        ensures y.out.size == x.out.size + 2;
+        ensures y.data[y.out.data[y.out.tail - 1].target].alive;
+        ensures y.data[y.out.data[y.out.tail - 2].target].alive;
     {
         var success: event_t;
         var ping   : event_t;
@@ -331,39 +364,44 @@ module main {
         var tmp1   : machine_list_t;
         var tmp2   : machine_list_t;
 
-        client = x.data[id];
+        client = x.data[s];
 
         success.signal = SUCCESS;
-        success.source = client.id;
-        success.target = client.id;
+        success.source = s;
+        success.target = s;
 
         tmp1 = x;
         call (tmp1.out) = pushEvent(x.out, success);
 
-        ping.signal       = PING;
-        ping.source       = client.id;
-        ping.target       = client.id + 1; // better way to do this?
+        ping.signal = PING;
+        ping.source = s;
+        ping.target = t;
 
         client.state.entry = false;
 
         tmp2 = tmp1;
         call (tmp2.out) = pushEvent(tmp1.out, ping);
         y = tmp2;
-        y.data = tmp2.data[id -> client];
+        y.data = tmp2.data[s -> client];
     }
 
-    procedure [inline] serverSendPongEntry(id: machine_id, x: machine_list_t) 
-        returns (y: machine_list_t) 
-        requires x.data[id].alive;
-        requires x.data[id].kind == Server;
-        requires x.data[id].state.name == SendPong;
-        requires x.data[id].state.entry;
-        ensures y.data[id].alive;
-        ensures y.data[id].kind == Server;
-        ensures y.data[id].state.name == SendPong;
-        ensures !y.data[id].state.entry;
+    procedure [inline] serverSendPongEntry(s: machine_id, t: machine_id, x: machine_list_t) 
+        returns (y: machine_list_t)
+        requires x.data[s].alive; 
+        requires x.data[t].alive;
+        requires x.data[s].kind == Server;
+        requires x.data[s].state.name == SendPong; 
+        requires x.data[s].state.entry;
+        requires x.out.size >= 0;
+        requires x.out.tail - x.out.head == x.out.size;
+        ensures y.data[s].alive;
+        ensures y.data[s].kind == Server;
+        ensures y.data[s].state.name == SendPong; 
+        ensures !y.data[s].state.entry;
         ensures y.count == x.count;
-        // ensures y.data[id].data[y.data[id].head].signal == PONG; //bug in UCLID?
+        ensures y.out.size == x.out.size + 2;
+        ensures y.data[y.out.data[y.out.tail - 1].target].alive;
+        ensures y.data[y.out.data[y.out.tail - 2].target].alive;
     {
         var success: event_t;
         var pong   : event_t;
@@ -371,57 +409,64 @@ module main {
         var tmp1   : machine_list_t;
         var tmp2   : machine_list_t;
 
-        server = x.data[id];
+        server = x.data[s];
 
         success.signal = SUCCESS;
-        success.source = server.id;
-        success.target = server.id;
+        success.source = s;
+        success.target = s;
 
         tmp1 = x;
         call (tmp1.out) = pushEvent(x.out, success);
 
-        pong.signal       = PONG;
-        pong.source       = server.id;
-        pong.target       = server.id - 1; // better way to do this?
+        pong.signal = PONG;
+        pong.source = s;
+        pong.target = t;
 
         server.state.entry = false;
 
         tmp2 = tmp1;
         call (tmp2.out) = pushEvent(tmp1.out, pong);
         y = tmp2;
-        y.data = tmp2.data[id -> server];
+        y.data = tmp2.data[s -> server];
     }
 
     procedure [inline] send(x: machine_list_t) 
         returns (y: machine_list_t) 
         requires x.count > 0;
+        requires x.out.size >= 0;
+        requires x.out.tail - x.out.head == x.out.size;
+        ensures y.data[y.out.data[y.out.tail - 1].target].alive || x.out.size == 0;
         ensures y.count > 0;
     {
-        var choice: machine_id;
-        assume(choice >= 0 && choice < x.count && x.data[choice].alive);
+        var s: machine_id;
+        assume(s >= 0 && s < x.count && x.data[s].alive);
 
         y = x;
 
         case 
-            (y.data[choice].kind == Client): {
+            (y.data[s].kind == Client): {
                 case
-                    (y.data[choice].state.name == Init): {
-                        if (y.data[choice].state.entry) {
-                            call (y) = clientInitEntry(choice, x);
+                    (y.data[s].state.name == Init): {
+                        if (y.data[s].state.entry) {
+                            call (y) = clientInitEntry(s, x);
                         }
                     }
-                    (y.data[choice].state.name == SendPing): {
-                        if (y.data[choice].state.entry) {
-                            call (y) = clientSendPingEntry(choice, x);
+                    (y.data[s].state.name == SendPing): {
+                        if (y.data[s].state.entry) {
+                            var t: machine_id;
+                            assume(t >= 0 && t < x.count && x.data[t].alive);
+                            call (y) = clientSendPingEntry(s, t, x);
                         }
                     }
                 esac
             }
-            (y.data[choice].kind == Server): {
+            (y.data[s].kind == Server): {
                 case
-                    (y.data[choice].state.name == SendPong): {
-                        if (y.data[choice].state.entry) {
-                            call (y) = serverSendPongEntry(choice, x);
+                    (y.data[s].state.name == SendPong): {
+                        if (y.data[s].state.entry) {
+                            var t: machine_id;
+                            assume(t >= 0 && t < x.count && x.data[t].alive);
+                            call (y) = serverSendPongEntry(s, t, x);
                         }
                     }
                 esac
@@ -430,9 +475,13 @@ module main {
     }
 
     procedure [inline] receive(x: machine_list_t) 
-        returns (y: machine_list_t) 
+        returns (y: machine_list_t)
         requires x.out.size > 0;
-        ensures y.out.size == x.out.size - 1;
+        requires x.out.tail - x.out.head == x.out.size;
+        requires x.data[x.out.data[x.out.head].target].alive;
+        requires x.data[x.out.data[x.out.tail - 1].target].alive;
+        ensures y.data[y.out.data[y.out.tail - 1].target].alive || y.out.size == 0;
+        ensures y.out.size == x.out.size || y.out.size == x.out.size - 1;
     {
         var e  : event_t;
         var tmp: machine_list_t; 
@@ -494,6 +543,10 @@ module main {
                 call (y) = gotoBad(e.target, tmp);
             }
         }
+        (true) : {
+            y = tmp;
+            call (y.out) = pushEvent(tmp.out, e);
+        }
         esac
     }
 
@@ -533,6 +586,13 @@ module main {
          machines.data[0].kind == Client && 
          machines.data[0].alive
         );
+
+    invariant every_target_is_live: machines.out.size > 0 ==> 
+        machines.data[machines.out.data[machines.out.head].target].alive && 
+        machines.data[machines.out.data[machines.out.tail - 1].target].alive;
+
+    invariant never_negative_communication: machines.out.size >= 0;
+    invariant coherent_communication: machines.out.tail - machines.out.head == machines.out.size;
 
     control {
         v = induction;
