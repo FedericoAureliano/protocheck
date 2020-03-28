@@ -1,5 +1,5 @@
 module main {
-    // *** TYPE DECLARATIONS ***
+
     type machine_id = integer;
 
     // events
@@ -35,14 +35,13 @@ module main {
         state: state_t
     };
 
-    // machine queues
+    // machine lists
     type machine_list_t = record { 
         data   : [machine_id]machine_t,
         count  : machine_id,
         events : event_queue_t
     };
 
-    // *** PROCEDURE DECLARATIONS ***
     // procedures for event queues
     procedure resetEvents() 
         modifies machines;
@@ -52,249 +51,250 @@ module main {
         machines.events.size = 0;
     }
 
-    procedure pushEvent(d: event_t) 
+    procedure pushEvent(event_push: event_t) 
         modifies machines;
     {
-        machines.events.data = machines.events.data[machines.events.tail -> d];
+        machines.events.data = machines.events.data[machines.events.tail -> event_push];
         machines.events.tail = machines.events.tail + 1;
         machines.events.size = machines.events.size + 1;
     }
 
     procedure popEvent() 
-        returns (popped: event_t)
+        returns (event_pop: event_t)
         modifies machines; 
     {
         machines.events.head = machines.events.head + 1;
         machines.events.size = machines.events.size - 1;
 
-        popped = machines.events.data[machines.events.head];
+        event_pop = machines.events.data[machines.events.head];
         machines.events.data = machines.events.data;
     }
 
-    //  MACHINES
-    procedure addMachine(d: machine_t) 
+    //  procedures for machine lists
+    procedure addMachine(machine_add: machine_t) 
         modifies machines; 
     {
-        machines.data  = machines.data[machines.count -> d];
+        machines.data  = machines.data[machines.count -> machine_add];
         machines.count = machines.count + 1;
     }
 
-    procedure deleteMachine(id: machine_id) 
+    procedure deleteMachine(id_delete: machine_id) 
         modifies machines;
     {
-        var tmp : machine_t;
+        var tmp_delete : machine_t;
 
-        tmp = machines.data[id];
-        tmp.alive = false;
-        machines.data = machines.data[id -> tmp];
+        tmp_delete       = machines.data[id_delete];
+        tmp_delete.alive = false;
+        machines.data    = machines.data[id_delete -> tmp_delete];
     }
 
+    // procedures for the model
     procedure initMachines() 
         modifies machines;
     {
-        var c: machine_t;
+        var client_init: machine_t;
 
-        call ()  = resetEvents();
-        call (c) = createClient();
-        call ()  = addMachine(c);
+        call ()            = resetEvents();
+        call (client_init) = createClient();
+        call ()            = addMachine(client_init);
     }
 
     procedure createClient() 
-        returns (c: machine_t)
+        returns (client_create: machine_t)
     {
-        c.alive       = true;
-        c.kind        = Client;
-        c.state.name  = Init;
-        c.state.entry = true;
+        client_create.alive       = true;
+        client_create.kind        = Client;
+        client_create.state.name  = Init;
+        client_create.state.entry = true;
     }
 
     procedure createServer() 
-        returns (s: machine_t)
+        returns (server_create: machine_t)
     {
-        s.alive       = true;
-        s.kind        = Server;
-        s.state.name  = WaitPing;
+        server_create.alive       = true;
+        server_create.kind        = Server;
+        server_create.state.name  = WaitPing;
     }
 
     procedure gotoBad(id: machine_id) 
         modifies machines;
     {
-        var tmp : machine_t;
+        var tmp_bad : machine_t;
 
-        tmp = machines.data[id];
-        tmp.state.name = Bad;
-        machines.data = machines.data[id -> tmp];
+        tmp_bad            = machines.data[id];
+        tmp_bad.state.name = Bad;
+        machines.data      = machines.data[id -> tmp_bad];
     }
 
-    procedure clientInit(e: event_t) 
+    procedure clientInit(client_init_event: event_t) 
         modifies machines;
-        requires machines.data[e.target].kind == Client;
-        requires machines.data[e.target].state.name == Init;
-        requires machines.data[e.target].state.entry;
+        requires machines.data[client_init_event.target].kind == Client;
+        requires machines.data[client_init_event.target].state.name == Init;
+        requires machines.data[client_init_event.target].state.entry;
     {
-        var tmp : machine_t;
-        tmp = machines.data[e.target];
+        var tmp_client_init : machine_t;
+        tmp_client_init = machines.data[client_init_event.target];
 
-        if (e.signal == SUCCESS) {
-            tmp.state.entry = true;
-            tmp.state.name = SendPing;
+        if (client_init_event.signal == SUCCESS) {
+            tmp_client_init.state.entry = true;
+            tmp_client_init.state.name = SendPing;
         } else {
-            tmp.state.name = Bad;
+            tmp_client_init.state.name = Bad;
         }
 
-        machines.data = machines.data[e.target -> tmp];
+        machines.data = machines.data[client_init_event.target -> tmp_client_init];
     }
 
-    procedure clientSendPing(e: event_t) 
+    procedure clientSendPing(client_send_ping_event: event_t) 
         modifies machines;
-        requires machines.data[e.target].kind == Client;
-        requires machines.data[e.target].state.name == SendPing;
-        requires !machines.data[e.target].state.entry;
+        requires machines.data[client_send_ping_event.target].kind == Client;
+        requires machines.data[client_send_ping_event.target].state.name == SendPing;
+        requires !machines.data[client_send_ping_event.target].state.entry;
     {
-        var tmp : machine_t;
-        tmp = machines.data[e.target];
+        var tmp_client_send_ping : machine_t;
+        tmp_client_send_ping = machines.data[client_send_ping_event.target];
 
-        if (e.signal == SUCCESS) {
-            tmp.state.entry = true;
-            tmp.state.name = WaitPong;
+        if (client_send_ping_event.signal == SUCCESS) {
+            tmp_client_send_ping.state.entry = true;
+            tmp_client_send_ping.state.name = WaitPong;
         } else {
-            tmp.state.name = Bad;
+            tmp_client_send_ping.state.name = Bad;
         }
 
-        machines.data = machines.data[e.target -> tmp];
+        machines.data = machines.data[client_send_ping_event.target -> tmp_client_send_ping];
     }
 
-    procedure clientWaitPong(e: event_t) 
+    procedure clientWaitPong(client_wait_pong_event: event_t) 
         modifies machines;
-        requires machines.data[e.target].kind == Client;
-        requires machines.data[e.target].state.name == WaitPong;
-        requires !machines.data[e.target].state.entry;
+        requires machines.data[client_wait_pong_event.target].kind == Client;
+        requires machines.data[client_wait_pong_event.target].state.name == WaitPong;
+        requires !machines.data[client_wait_pong_event.target].state.entry;
     {
-        var tmp : machine_t;
-        tmp = machines.data[e.target];
+        var tmp_client_wait_pong : machine_t;
+        tmp_client_wait_pong = machines.data[client_wait_pong_event.target];
 
-        if (e.signal == PONG) {
-            tmp.state.entry = true;
-            tmp.state.name = SendPing;
+        if (client_wait_pong_event.signal == PONG) {
+            tmp_client_wait_pong.state.entry = true;
+            tmp_client_wait_pong.state.name = SendPing;
         } else {
-            tmp.state.name = Bad;
+            tmp_client_wait_pong.state.name = Bad;
         }
 
-        machines.data = machines.data[e.target -> tmp];
+        machines.data = machines.data[client_wait_pong_event.target -> tmp_client_wait_pong];
     }
 
-    procedure serverSendPong(e: event_t) 
+    procedure serverSendPong(server_send_pong_event: event_t) 
         modifies machines;
-        requires machines.data[e.target].kind == Server;
-        requires machines.data[e.target].state.name == SendPong;
-        requires !machines.data[e.target].state.entry;
+        requires machines.data[server_send_pong_event.target].kind == Server;
+        requires machines.data[server_send_pong_event.target].state.name == SendPong;
+        requires !machines.data[server_send_pong_event.target].state.entry;
     {
-        var tmp : machine_t;
-        tmp = machines.data[e.target];
+        var tmp_server_send_pong : machine_t;
+        tmp_server_send_pong = machines.data[server_send_pong_event.target];
 
-        if (e.signal == SUCCESS) {
-            tmp.state.entry = true;
-            tmp.state.name = WaitPing;
+        if (server_send_pong_event.signal == SUCCESS) {
+            tmp_server_send_pong.state.entry = true;
+            tmp_server_send_pong.state.name = WaitPing;
         } else {
-            tmp.state.name = Bad;
+            tmp_server_send_pong.state.name = Bad;
         }
 
-        machines.data = machines.data[e.target -> tmp];
+        machines.data = machines.data[server_send_pong_event.target -> tmp_server_send_pong];
     }
 
-    procedure serverWaitPing(e: event_t) 
+    procedure serverWaitPing(server_wait_ping_event: event_t) 
         modifies machines;
-        requires machines.data[e.target].kind == Server;
-        requires machines.data[e.target].state.name == WaitPing;
-        requires !machines.data[e.target].state.entry;
+        requires machines.data[server_wait_ping_event.target].kind == Server;
+        requires machines.data[server_wait_ping_event.target].state.name == WaitPing;
+        requires !machines.data[server_wait_ping_event.target].state.entry;
     {
-        var tmp : machine_t;
-        tmp = machines.data[e.target];
+        var tmp_server_wait_ping : machine_t;
+        tmp_server_wait_ping = machines.data[server_wait_ping_event.target];
 
-        if (e.signal == PING) {
-            tmp.state.entry = true;
-            tmp.state.name = SendPong;
+        if (server_wait_ping_event.signal == PING) {
+            tmp_server_wait_ping.state.entry = true;
+            tmp_server_wait_ping.state.name = SendPong;
         } else {
-            tmp.state.name = Bad;
+            tmp_server_wait_ping.state.name = Bad;
         }
 
-        machines.data = machines.data[e.target -> tmp];
+        machines.data = machines.data[server_wait_ping_event.target -> tmp_server_wait_ping];
     }
 
-    procedure clientInitEntry(id: machine_id) 
+    procedure clientInitEntry(client_init_entry_id: machine_id) 
         modifies machines;
-        requires machines.data[id].kind == Client;
-        requires machines.data[id].state.name == Init;
-        requires machines.data[id].state.entry;
+        requires machines.data[client_init_entry_id].kind == Client;
+        requires machines.data[client_init_entry_id].state.name == Init;
+        requires machines.data[client_init_entry_id].state.entry;
     {
-        var success: event_t;
-        var s      : machine_t;
-        var tmp    : machine_t;
+        var init_success_event    : event_t;
+        var new_server            : machine_t;
+        var tmp_client_init_entry : machine_t;
 
-        tmp = machines.data[id];
-        tmp.state.entry = false;
+        tmp_client_init_entry = machines.data[client_init_entry_id];
+        tmp_client_init_entry.state.entry = false;
 
-        success.signal = SUCCESS;
-        success.source = id;
-        success.target = id;
+        init_success_event.signal = SUCCESS;
+        init_success_event.source = client_init_entry_id;
+        init_success_event.target = client_init_entry_id;
 
-        call ()  = pushEvent(success);
-        call (s) = createServer();
-        call ()  = addMachine(s);
+        call ()           = pushEvent(init_success_event);
+        call (new_server) = createServer();
+        call ()           = addMachine(new_server);
 
-        machines.data = machines.data[id -> tmp];
+        machines.data = machines.data[client_init_entry_id -> tmp_client_init_entry];
     }
 
-    procedure clientSendPingEntry(s: machine_id, t: machine_id) 
+    procedure clientSendPingEntry(send_ping_source_id: machine_id, send_ping_target_id: machine_id) 
         modifies machines;
-        requires machines.data[s].kind == Client;
-        requires machines.data[s].state.name == SendPing;
-        requires machines.data[s].state.entry;
+        requires machines.data[send_ping_source_id].kind == Client;
+        requires machines.data[send_ping_source_id].state.name == SendPing;
+        requires machines.data[send_ping_source_id].state.entry;
     {
-        var success: event_t;
-        var ping   : event_t;
-        var tmp    : machine_t;
+        var send_ping_success_event : event_t;
+        var send_ping_event         : event_t;
+        var tmp_send_ping           : machine_t;
 
-        tmp = machines.data[s];
-        tmp.state.entry = false;
+        tmp_send_ping             = machines.data[send_ping_source_id];
+        tmp_send_ping.state.entry = false;
 
-        success.signal = SUCCESS;
-        success.source = s;
-        success.target = s;
-        call () = pushEvent(success);
+        send_ping_success_event.signal = SUCCESS;
+        send_ping_success_event.source = send_ping_source_id;
+        send_ping_success_event.target = send_ping_source_id;
+        call () = pushEvent(send_ping_success_event);
 
-        ping.signal = PING;
-        ping.source = s;
-        ping.target = t;
-        call () = pushEvent(ping);
+        send_ping_event.signal = PING;
+        send_ping_event.source = send_ping_source_id;
+        send_ping_event.target = send_ping_target_id;
+        call () = pushEvent(send_ping_event);
 
-        machines.data = machines.data[s -> tmp];
+        machines.data = machines.data[send_ping_source_id -> tmp_send_ping];
     }
 
-    procedure serverSendPongEntry(s: machine_id, t: machine_id) 
+    procedure serverSendPongEntry(send_pong_source_id: machine_id, send_pong_target_id: machine_id) 
         modifies machines;
-        requires machines.data[s].kind == Server;
-        requires machines.data[s].state.name == SendPong;
-        requires machines.data[s].state.entry;
+        requires machines.data[send_pong_source_id].kind == Server;
+        requires machines.data[send_pong_source_id].state.name == SendPong;
+        requires machines.data[send_pong_source_id].state.entry;
     {
-        var success: event_t;
-        var pong   : event_t;
-        var tmp    : machine_t;
+        var send_pong_success_event : event_t;
+        var send_pong_event         : event_t;
+        var tmp_send_pong           : machine_t;
 
-        tmp = machines.data[s];
-        tmp.state.entry = false;
+        tmp_send_pong             = machines.data[send_pong_source_id];
+        tmp_send_pong.state.entry = false;
 
-        success.signal = SUCCESS;
-        success.source = s;
-        success.target = s;
-        call () = pushEvent(success);
+        send_pong_success_event.signal = SUCCESS;
+        send_pong_success_event.source = send_pong_source_id;
+        send_pong_success_event.target = send_pong_source_id;
+        call () = pushEvent(send_pong_success_event);
 
-        pong.signal = PONG;
-        pong.source = s;
-        pong.target = t;
-        call () = pushEvent(pong);
+        send_pong_event.signal = PONG;
+        send_pong_event.source = send_pong_source_id;
+        send_pong_event.target = send_pong_target_id;
+        call () = pushEvent(send_pong_event);
 
-        machines.data = machines.data[s -> tmp];
+        machines.data = machines.data[send_pong_source_id -> tmp_send_pong];
     }
 
     procedure act() 
@@ -421,10 +421,8 @@ module main {
         esac
     }
 
-    // *** ACTUAL DATA ***
     var machines: machine_list_t;
 
-    // *** TRANSITION SYSTEM ***
     init {
         call () = initMachines();
     }
