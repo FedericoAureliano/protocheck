@@ -123,16 +123,6 @@ module main {
         server_create.state.name  = WaitPing;
     }
 
-    procedure [inline] gotoBad(id: machine_id) 
-        modifies machines;
-    {
-        var tmp_bad : machine_t;
-
-        tmp_bad            = machines.data[id];
-        tmp_bad.state.name = Bad;
-        machines.data      = machines.data[id -> tmp_bad];
-    }
-
     procedure [inline] clientInit(client_init_event: event_t) 
         modifies machines;
         requires machines.data[client_init_event.target].kind == Client;
@@ -348,60 +338,28 @@ module main {
 
         // case switch on every state of the entire system
         case 
-        (machines.data[e.target].state.name == Init) : 
-        {
-            if (machines.data[e.target].kind == Client) {
-                if (!machines.data[e.target].state.entry) {
-                    call () = clientInit(e);
-                } else {
-                    call () = gotoBad(e.target);
-                }
-            } else {
-                call () = gotoBad(e.target);
+        (machines.data[e.target].kind == Client) : {
+            case 
+            (machines.data[e.target].state.name == Init) : {
+                call () = clientInit(e);
             }
-        }
-        (machines.data[e.target].state.name == WaitPong) : 
-        {
-            if (machines.data[e.target].kind == Client) {
+            (machines.data[e.target].state.name == WaitPong) : {
                 call () = clientWaitPong(e);
-            } else {
-                call () = gotoBad(e.target);
             }
-        }
-        (machines.data[e.target].state.name == SendPing) : 
-        {
-            if (machines.data[e.target].kind == Client) {
-                if (!machines.data[e.target].state.entry) {
-                    call () = clientSendPing(e);
-                } else {
-                    call () = gotoBad(e.target);
-                }
-            } else {
-                call () = gotoBad(e.target);
+            (machines.data[e.target].state.name == SendPing) : {
+                call () = clientSendPing(e);
             }
-        }
-        (machines.data[e.target].state.name == WaitPing) : 
-        {
-            if (machines.data[e.target].kind == Server) {
+            esac
+        } 
+        (machines.data[e.target].kind == Server) : {
+            case 
+            (machines.data[e.target].state.name == WaitPing) : {
                 call () = serverWaitPing(e);
-            } else {
-                call () = gotoBad(e.target);
             }
-        }
-        (machines.data[e.target].state.name == SendPong) : 
-        {
-            if (machines.data[e.target].kind == Server) {
-                if (!machines.data[e.target].state.entry) {
-                    call () = serverSendPong(e);
-                } else {
-                    call () = gotoBad(e.target);
-                }
-            } else {
-                call () = gotoBad(e.target);
+            (machines.data[e.target].state.name == SendPong) : {
+                call () = serverSendPong(e);
             }
-        }
-        (true) : {
-            call () = pushEvent(e);
+            esac
         }
         esac
     }
@@ -417,7 +375,6 @@ module main {
             call () = act();
         } else {
             assume(machines.events.size > 0);
-            assume(machines.count > 1);
             call () = react();
         }
     }
@@ -428,6 +385,8 @@ module main {
             machines.data[id].state.name != Bad;
 
     // AUXILLARY INVARIANTS
+
+    // first machine is client, second is server, if it exists
     invariant two_machines_not_in_init_entry_or_one_client_in_init_entry:
         (machines.count == 1 && 
          machines.data[0].state.name == Init &&
@@ -448,66 +407,81 @@ module main {
     invariant coherent_events: 
         machines.events.size == machines.events.tail - machines.events.head;
 
-    invariant send_ping_entry_then_events_empty: 
-        machines.data[0].state.name == SendPing &&
-        machines.data[0].state.entry &&
-        machines.data[0].kind == Client ==> machines.events.size == 0;
+    // every target exists 
+    invariant existing_target: 
+        forall (x : event_id) :: 
+            (x >= machines.events.head && x < machines.events.tail) ==>
+            (machines.events.data[x].target >= 0 && machines.events.data[x].target < machines.count);
 
-    invariant init_entry_then_events_empty: 
-        machines.data[0].state.name == Init &&
-        machines.data[0].state.entry &&
-        machines.data[0].kind == Client ==> machines.events.size == 0;
+    // client is in Init, SendPing, or WaitPong
+    invariant client_states: 
+        machines.data[0].state.name == Init ||
+        machines.data[0].state.name == SendPing ||
+        machines.data[0].state.name == WaitPong;
 
-    invariant init_then_one_event_success: 
-        machines.data[0].state.name == Init &&
-        machines.data[0].kind == Client ==> 
-        machines.events.size == 1 ==> 
+    // server is in SendPong, or WaitPing, if it exists
+    invariant server_states:
+        machines.count == 2 ==> 
+        machines.data[1].state.name == SendPong ||
+        machines.data[1].state.name == WaitPing;
+
+    // If the client is in init, then the server is in WaitPing, if it exists
+    invariant client_init:
+        machines.data[0].state.name == Init ==>
+        machines.count == 2 ==> 
+        machines.data[1].state.name == WaitPing;
+
+    // If the client is in init entry, then the server doesn't exist and events are empty
+    invariant client_init_entry:
+        machines.data[0].state.name == Init && 
+        machines.data[0].state.entry ==>
+        machines.count == 1 &&
+        machines.events.size == 0;
+
+    // If the client is in init but not entry, then the server exists and success is the only event
+    invariant client_init_success:
+        machines.data[0].state.name == Init && 
+        !machines.data[0].state.entry ==>
+        machines.count == 2 &&
+        machines.events.size == 1 &&
+        machines.events.data[machines.events.head].signal == SUCCESS &&
         machines.events.data[machines.events.head].target == 0;
 
-    invariant send_pong_entry_then_events_empty: 
-        machines.count > 1 &&
+    // If the client is in SendPing entry and the server is in WaitPing, then there are no events 
+    invariant client_send_ping_entry:
+        machines.data[0].state.name == SendPing &&
+        machines.data[0].state.entry &&
+        machines.data[1].state.name == WaitPing ==>
+        machines.events.size == 0;
+
+    // If the client is in SendPing not entry and the server is in WaitPing, then there are two events: success and ping 
+    invariant client_send_ping_not_entry:
+        machines.data[0].state.name == SendPing &&
+        !machines.data[0].state.entry &&
+        machines.data[1].state.name == WaitPing ==>
+        machines.events.size == 2 &&
+        machines.events.data[machines.events.head].signal == SUCCESS &&
+        machines.events.data[machines.events.head].target == 0 &&
+        machines.events.data[machines.events.head + 1].signal == PING &&
+        machines.events.data[machines.events.head + 1].target == 1;
+
+    // If the server is in SendPong entry and the client is in WaitPong, then there are no events 
+    invariant server_send_pong_entry:
         machines.data[1].state.name == SendPong &&
         machines.data[1].state.entry &&
-        machines.data[1].kind == Server ==> machines.events.size == 0;
+        machines.data[0].state.name == WaitPong ==>
+        machines.events.size == 0;
 
-    invariant send_ping_means_wait_ping: 
-        machines.data[0].kind == Client &&  
-        machines.data[0].state.name == SendPing &&
-        machines.data[0].state.entry ==>
-        ((machines.data[1].kind == Server &&
-        machines.data[1].state.name == WaitPing) ||
-        (machines.data[1].kind == Server &&
+    // If the server is in SendPong not entry and the client is in WaitPong, then there are two events: success and ping 
+    invariant server_send_pong_not_entry:
         machines.data[1].state.name == SendPong &&
-        !machines.data[1].state.entry));
-
-    invariant init_means_wait_ping: 
-        machines.count > 1 ==>
-        machines.data[0].kind == Client &&  
-        machines.data[0].state.name == Init ==>
-        (machines.data[1].kind == Server &&
-        machines.data[1].state.name == WaitPing);
-
-    invariant send_pong_means_wait_pong: 
-        machines.data[0].kind == Server &&  
-        machines.data[0].state.name == SendPong &&
-        machines.data[0].state.entry ==>
-        ((machines.data[1].kind == Client &&
-        machines.data[1].state.name == WaitPong) ||
-        (machines.data[1].kind == Client &&
-        machines.data[1].state.name == SendPing &&
-        !machines.data[1].state.entry));
-
-    invariant server_wait_or_send:
-        machines.count > 1 ==>
-        machines.data[1].kind == Server &&
-        (machines.data[1].state.name == WaitPing || 
-        machines.data[1].state.name == SendPong); 
-
-    invariant client_init_send_or_wait:
-        machines.data[0].kind == Client &&
-        (machines.data[0].state.name == WaitPong || 
-        machines.data[0].state.name == SendPing ||
-        machines.data[0].state.name == Init); 
+        !machines.data[1].state.entry &&
+        machines.data[0].state.name == WaitPong ==>
+        machines.events.size == 2 &&
+        machines.events.data[machines.events.head].signal == SUCCESS &&
+        machines.events.data[machines.events.head].target == 1 &&
+        machines.events.data[machines.events.head + 1].signal == PONG &&
+        machines.events.data[machines.events.head + 1].target == 0;
 
     control {
         v = induction;
@@ -518,16 +492,18 @@ module main {
             machines.count,
 
             machines.events.size,
-            machines.events.head,
-            machines.events.tail,
+            machines.events.data[machines.events.head].signal,
+            machines.events.data[machines.events.head].target,
+            machines.events.data[machines.events.head+1].signal,
+            machines.events.data[machines.events.head+1].target,
 
-            machines.data[0].alive,
             machines.data[0].kind,
+            machines.data[0].alive,
             machines.data[0].state.name,
             machines.data[0].state.entry,
 
-            machines.data[1].alive,
             machines.data[1].kind,
+            machines.data[1].alive,
             machines.data[1].state.name,
             machines.data[1].state.entry
         );
