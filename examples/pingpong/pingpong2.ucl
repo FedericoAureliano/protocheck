@@ -57,16 +57,14 @@ module main {
 
     // procedures for event queues
     procedure [inline] resetEvents() 
-        modifies machines;
-    {
+        modifies machines; {
         machines.events.head = 0;
         machines.events.tail = 0;
         machines.events.size = 0;
     }
 
     procedure [inline] pushEvent(e: event_t) 
-        modifies machines;
-    {
+        modifies machines; {
         machines.events.data = machines.events.data[e_tail() -> e];
         machines.events.tail = e_tail() + 1;
         machines.events.size = e_count() + 1;
@@ -74,8 +72,7 @@ module main {
 
     procedure [inline] popEvent() 
         returns (e: event_t)
-        modifies machines; 
-    {
+        modifies machines;  {
         e = machines.events.data[e_head()];
         machines.events.head = e_head() + 1;
         machines.events.size = e_count() - 1;
@@ -83,21 +80,18 @@ module main {
 
     //  procedures for machine lists
     procedure [inline] resetMachines() 
-        modifies machines;
-    {
+        modifies machines; {
         machines.count = 0;
     }
 
     procedure [inline] addMachine(m: machine_t) 
-        modifies machines; 
-    {
+        modifies machines;  {
         machines.data  = machines.data[m_count() -> m];
         machines.count = m_count() + 1;
     }
 
     procedure [inline] deleteMachine(id: machine_id) 
-        modifies machines;
-    {
+        modifies machines; {
         var tmp : machine_t;
 
         tmp           = get(id);
@@ -107,8 +101,7 @@ module main {
 
     // procedures for the model
     procedure [inline] initMachines() 
-        modifies machines;
-    {
+        modifies machines; {
         var tmp: machine_t;
 
         call ()    = resetMachines();
@@ -118,8 +111,7 @@ module main {
     }
 
     procedure [inline] createClient() 
-        returns (client: machine_t)
-    {
+        returns (client: machine_t) {
         client.alive       = true;
         client.kind        = Client;
         client.state.name  = Init;
@@ -127,8 +119,7 @@ module main {
     }
 
     procedure [inline] createServer() 
-        returns (server: machine_t)
-    {
+        returns (server: machine_t) {
         server.alive       = true;
         server.kind        = Server;
         server.state.name  = WaitPing;
@@ -138,8 +129,7 @@ module main {
         modifies machines;
         requires kind(e.target) == Client;
         requires state(e.target) == Init;
-        requires !entry(e.target);
-    {
+        requires !entry(e.target); {
         var tmp : machine_t;
         tmp = get(e.target); 
 
@@ -157,8 +147,7 @@ module main {
         modifies machines;
         requires kind(e.target) == Client;
         requires state(e.target) == SendPing;
-        requires !entry(e.target);
-    {
+        requires !entry(e.target); {
         var tmp : machine_t;
         tmp = get(e.target);
 
@@ -175,8 +164,7 @@ module main {
     procedure [inline] clientWaitPong(e: event_t) 
         modifies machines;
         requires kind(e.target) == Client;
-        requires state(e.target) == WaitPong;
-    {
+        requires state(e.target) == WaitPong; {
         var tmp : machine_t;
         tmp = get(e.target);
 
@@ -194,8 +182,7 @@ module main {
         modifies machines;
         requires kind(e.target) == Server;
         requires state(e.target) == SendPong;
-        requires !entry(e.target);
-    {
+        requires !entry(e.target); {
         var tmp : machine_t;
         tmp = get(e.target);
 
@@ -212,8 +199,7 @@ module main {
     procedure [inline] serverWaitPing(e: event_t) 
         modifies machines;
         requires kind(e.target) == Server;
-        requires state(e.target) == WaitPing;
-    {
+        requires state(e.target) == WaitPing; {
         var tmp : machine_t;
         tmp = get(e.target);
 
@@ -231,8 +217,7 @@ module main {
         modifies machines;
         requires kind(id) == Client;
         requires state(id) == Init;
-        requires entry(id);
-    {
+        requires entry(id); {
         var e      : event_t;
         var server : machine_t;
         var tmp    : machine_t;
@@ -255,8 +240,7 @@ module main {
         modifies machines;
         requires kind(source) == Client;
         requires state(source) == SendPing;
-        requires entry(source);
-    {
+        requires entry(source); {
         var success : event_t;
         var ping    : event_t;
         var tmp     : machine_t;
@@ -281,8 +265,7 @@ module main {
         modifies machines;
         requires kind(source) == Server;
         requires state(source) == SendPong;
-        requires entry(source);
-    {
+        requires entry(source); {
         var success : event_t;
         var pong    : event_t;
         var tmp     : machine_t;
@@ -304,8 +287,7 @@ module main {
     }
 
     procedure [inline] act() 
-        modifies machines;
-    {
+        modifies machines; {
         var s: machine_id;
         assume(alive(s));
 
@@ -350,8 +332,7 @@ module main {
     }
 
     procedure [inline] react() 
-        modifies machines;
-    {
+        modifies machines; {
         var e  : event_t;
 
         call (e) = popEvent();
@@ -443,7 +424,7 @@ module main {
     // every target exists 
     invariant existing_target: 
         forall (x : event_id) :: valid(x) ==>
-            (machines.events.data[x].target >= 0 && machines.events.data[x].target < machines.count);
+            (target(x) >= 0 && target(x) < machines.count);
 
     // client is in Init, SendPing, or WaitPong
     invariant client_states: 
