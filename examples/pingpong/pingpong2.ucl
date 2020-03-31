@@ -46,12 +46,14 @@ module main {
     define e_head  () : event_id    = machines.events.head;
     define e_tail  () : event_id    = machines.events.tail;
     define e_count () : event_id    = machines.events.size;
-    define get    (id : machine_id) : machine_t = machines.data[id];
-    define kind   (id : machine_id) : kind_t    = machines.data[id].kind;
-    define state  (id : machine_id) : state_e   = machines.data[id].state.name;
-    define entry  (id : machine_id) : boolean   = machines.data[id].state.entry;
-    define alive  (id : machine_id) : boolean   = id >= 0 && id < machines.count && machines.data[id].alive;
-    define valid  (id : event_id)   : boolean   = id >= e_head() && id < e_tail();
+    define signal (id : event_id)   : signal_t   = machines.events.data[id].signal;
+    define target (id : event_id)   : machine_id = machines.events.data[id].target;
+    define get    (id : machine_id) : machine_t  = machines.data[id];
+    define kind   (id : machine_id) : kind_t     = machines.data[id].kind;
+    define state  (id : machine_id) : state_e    = machines.data[id].state.name;
+    define entry  (id : machine_id) : boolean    = machines.data[id].state.entry;
+    define alive  (id : machine_id) : boolean    = id >= 0 && id < machines.count && machines.data[id].alive;
+    define valid  (id : event_id)   : boolean    = id >= e_head() && id < e_tail();
 
     // procedures for event queues
     procedure [inline] resetEvents() 
@@ -466,8 +468,8 @@ module main {
     // If the client is in init but not entry, then the server exists and success is the only event
     invariant client_init_success: (state(0) == Init && !entry(0)) ==>
         (m_count() == 2 && e_count() == 1 &&
-        machines.events.data[e_head()].signal == SUCCESS &&
-        machines.events.data[e_head()].target == 0);
+        signal(e_head()) == SUCCESS &&
+        target(e_head()) == 0);
 
     // If the client is in SendPing entry then there are no events 
     invariant client_send_ping_entry: (state(0) == SendPing && entry(0)) ==> e_count() == 0;
@@ -475,18 +477,18 @@ module main {
     // If the client is in SendPing not entry and the server is in WaitPing, then there are two events: success and ping 
     invariant client_send_ping_not_entry: (state(0) == SendPing && !entry(0) && state(1) == WaitPing) ==>
         (e_count() == 2 && 
-        machines.events.data[e_head()].signal == SUCCESS &&
-        machines.events.data[e_head()].target == 0 &&
-        machines.events.data[e_head() + 1].signal == PING &&
-        machines.events.data[e_head() + 1].target == 1);
+        signal(e_head()) == SUCCESS &&
+        target(e_head()) == 0 &&
+        signal(e_head() + 1) == PING &&
+        target(e_head() + 1) == 1);
 
     // If the client is waiting for a pong, then there is a single pong event or a success before it
     invariant client_wait_pong: state(1) == WaitPong ==>
         (e_count() == 2 ==>
-        (machines.events.data[e_head()].signal == SUCCESS &&
-        machines.events.data[e_head()].target == 1 &&
-        machines.events.data[e_head() + 1].signal == PONG &&
-        machines.events.data[e_head() + 1].target == 0));
+        (signal(e_head()) == SUCCESS &&
+        target(e_head()) == 1 &&
+        signal(e_head() + 1) == PONG &&
+        target(e_head() + 1) == 0));
 
     // If the server is in SendPong entry then there are no events 
     invariant server_send_pong_entry: (state(1) == SendPong && entry(1)) ==> e_count() == 0;
@@ -497,25 +499,25 @@ module main {
         !entry(1) &&
         state(0) == WaitPong) ==>
         (e_count() == 2 && 
-        machines.events.data[e_head()].signal == SUCCESS &&
-        machines.events.data[e_head()].target == 1 &&
-        machines.events.data[e_head() + 1].signal == PONG &&
-        machines.events.data[e_head() + 1].target == 0);
+        signal(e_head()) == SUCCESS &&
+        target(e_head()) == 1 &&
+        signal(e_head() + 1) == PONG &&
+        target(e_head() + 1) == 0);
 
     // If the server is waiting for a ping, then there is a single ping event or a success before it
     invariant server_wait_ping: state(1) == WaitPing ==>
         (e_count() == 2 ==>
-        (machines.events.data[e_head()].signal == SUCCESS &&
-        machines.events.data[e_head()].target == 0 &&
-        machines.events.data[e_head() + 1].signal == PING &&
-        machines.events.data[e_head() + 1].target == 1));
+        (signal(e_head()) == SUCCESS &&
+        target(e_head()) == 0 &&
+        signal(e_head() + 1) == PING &&
+        target(e_head() + 1) == 1));
 
     invariant wait_wait_1: (state(0) == WaitPong && state(1) == WaitPing) ==>
         (e_count() == 1 &&
-        ((machines.events.data[e_head()].signal == PING &&
-        machines.events.data[e_head()].target == 1) ||
-        ((machines.events.data[e_head()].signal == PONG &&
-        machines.events.data[e_head()].target == 0))));
+        ((signal(e_head()) == PING &&
+        target(e_head()) == 1) ||
+        ((signal(e_head()) == PONG &&
+        target(e_head()) == 0))));
 
     control {
         v = induction;
