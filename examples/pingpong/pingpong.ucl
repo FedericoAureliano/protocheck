@@ -57,14 +57,16 @@ module main {
 
     // procedures for event queues
     procedure [inline] reset_events() 
-        modifies machines; {
+        modifies machines;
+    {
         machines.events.head = 0;
         machines.events.tail = 0;
         machines.events.size = 0;
     }
 
     procedure [inline] push_event(e: event_t) 
-        modifies machines; {
+        modifies machines;
+    {
         machines.events.data = machines.events.data[e_tail() -> e];
         machines.events.tail = e_tail() + 1;
         machines.events.size = e_count() + 1;
@@ -80,7 +82,8 @@ module main {
 
     //  procedures for machine lists
     procedure [inline] reset_machines() 
-        modifies machines; {
+        modifies machines;
+    {
         machines.count = 0;
     }
 
@@ -91,7 +94,8 @@ module main {
     }
 
     procedure [inline] delete_machine(id: machine_id) 
-        modifies machines; {
+        modifies machines;
+    {
         var tmp : machine_t;
 
         tmp           = m_get(id);
@@ -101,7 +105,8 @@ module main {
 
     // procedures for the model
     procedure [inline] init_machines() 
-        modifies machines; {
+        modifies machines;
+    {
         var tmp: machine_t;
 
         call ()    = reset_machines();
@@ -127,15 +132,16 @@ module main {
 
     procedure [inline] client_init(e: event_t) 
         modifies machines;
-        requires m_kind(e.target) == CLIENT;
+        requires m_kind(e.target)  == CLIENT;
         requires m_state(e.target) == INIT;
-        requires !m_entry(e.target); {
+        requires !m_entry(e.target); 
+    {
         var tmp : machine_t;
         tmp = m_get(e.target); 
 
         if (e.signal == SUCCESS) {
             tmp.state.entry = true;
-            tmp.state.name = SENDPING;
+            tmp.state.name  = SENDPING;
         } else {
             tmp.state.name = BAD;
         }
@@ -145,15 +151,16 @@ module main {
 
     procedure [inline] client_send_ping(e: event_t) 
         modifies machines;
-        requires m_kind(e.target) == CLIENT;
+        requires m_kind(e.target)  == CLIENT;
         requires m_state(e.target) == SENDPING;
-        requires !m_entry(e.target); {
+        requires !m_entry(e.target); 
+    {
         var tmp : machine_t;
         tmp = m_get(e.target);
 
         if (e.signal == SUCCESS) {
             tmp.state.entry = true;
-            tmp.state.name = WAITPONG;
+            tmp.state.name  = WAITPONG;
         } else {
             tmp.state.name = BAD;
         }
@@ -163,14 +170,15 @@ module main {
 
     procedure [inline] client_wait_pong(e: event_t) 
         modifies machines;
-        requires m_kind(e.target) == CLIENT;
-        requires m_state(e.target) == WAITPONG; {
+        requires m_kind(e.target)  == CLIENT;
+        requires m_state(e.target) == WAITPONG;
+    {
         var tmp : machine_t;
         tmp = m_get(e.target);
 
         if (e.signal == PONG) {
             tmp.state.entry = true;
-            tmp.state.name = SENDPING;
+            tmp.state.name  = SENDPING;
         } else {
             tmp.state.name = BAD;
         }
@@ -180,15 +188,16 @@ module main {
 
     procedure [inline] server_send_pong(e: event_t) 
         modifies machines;
-        requires m_kind(e.target) == SERVER;
+        requires m_kind(e.target)  == SERVER;
         requires m_state(e.target) == SENDPONG;
-        requires !m_entry(e.target); {
+        requires !m_entry(e.target); 
+    {
         var tmp : machine_t;
         tmp = m_get(e.target);
 
         if (e.signal == SUCCESS) {
             tmp.state.entry = true;
-            tmp.state.name = WAITPING;
+            tmp.state.name  = WAITPING;
         } else {
             tmp.state.name = BAD;
         }
@@ -198,14 +207,15 @@ module main {
 
     procedure [inline] server_wait_ping(e: event_t) 
         modifies machines;
-        requires m_kind(e.target) == SERVER;
-        requires m_state(e.target) == WAITPING; {
+        requires m_kind(e.target)  == SERVER;
+        requires m_state(e.target) == WAITPING;
+    {
         var tmp : machine_t;
         tmp = m_get(e.target);
 
         if (e.signal == PING) {
             tmp.state.entry = true;
-            tmp.state.name = SENDPONG;
+            tmp.state.name  = SENDPONG;
         } else {
             tmp.state.name = BAD;
         }
@@ -215,9 +225,10 @@ module main {
 
     procedure [inline] client_init_entry(id: machine_id) 
         modifies machines;
-        requires m_kind(id) == CLIENT;
+        requires m_kind(id)  == CLIENT;
         requires m_state(id) == INIT;
-        requires m_entry(id); {
+        requires m_entry(id); 
+    {
         var e      : event_t;
         var server : machine_t;
         var tmp    : machine_t;
@@ -238,9 +249,10 @@ module main {
 
     procedure [inline] client_send_ping_entry(source: machine_id, target: machine_id) 
         modifies machines;
-        requires m_kind(source) == CLIENT;
+        requires m_kind(source)  == CLIENT;
         requires m_state(source) == SENDPING;
-        requires m_entry(source); {
+        requires m_entry(source); 
+    {
         var success : event_t;
         var ping    : event_t;
         var tmp     : machine_t;
@@ -263,9 +275,10 @@ module main {
 
     procedure [inline] server_send_pong_entry(source: machine_id, target: machine_id) 
         modifies machines;
-        requires m_kind(source) == SERVER;
+        requires m_kind(source)  == SERVER;
         requires m_state(source) == SENDPONG;
-        requires m_entry(source); {
+        requires m_entry(source); 
+    {
         var success : event_t;
         var pong    : event_t;
         var tmp     : machine_t;
@@ -287,7 +300,8 @@ module main {
     }
 
     procedure [inline] act() 
-        modifies machines; {
+        modifies machines;
+    {
         var s: machine_id;
         assume(m_alive(s));
 
@@ -332,7 +346,8 @@ module main {
     }
 
     procedure [inline] react() 
-        modifies machines; {
+        modifies machines;
+    {
         var e  : event_t;
 
         call (e) = pop_event();
@@ -396,28 +411,21 @@ module main {
     }
 
     // MAIN INVARIANT
-    invariant never_bad: forall (id: machine_id) :: m_alive(id) ==> m_state(id) != BAD;
+    invariant never_bad: forall (id: machine_id) :: 
+        m_alive(id) ==> m_state(id) != BAD;
 
     // AUXILLARY INVARIANTS
-
     // first machine is client, second is server, if it exists
     invariant two_machines_not_in_init_entry_or_one_client_in_init_entry:
         (m_count() == 1 && 
          m_state(0) == INIT && m_entry(0) &&
-         m_kind(0) == CLIENT && m_alive(0))
-        ||
+         m_kind(0) == CLIENT && m_alive(0)) ||
         (m_count() == 2 && 
          (m_state(0) != INIT || !m_entry(0)) &&
          m_kind(0) == CLIENT && m_alive(0) &&
-         m_kind(1) == SERVER && m_alive(1)
-         );
+         m_kind(1) == SERVER && m_alive(1));
     
-    invariant max_two_events: e_count() <= 2;
-    invariant min_zero_events: e_count() >= 0;
     invariant coherent_events: e_count() == e_tail() - e_head();
-
-    // every target exists 
-    invariant existing_target: forall (x : event_id) :: e_valid(x) ==> m_alive(e_target(x));
 
     // client is in INIT, SENDPING, or WAITPONG
     invariant client_states: 
@@ -426,70 +434,91 @@ module main {
         m_state(0) == WAITPONG;
 
     // server is in SENDPONG, or WAITPING, if it exists
-    invariant server_states: m_count() == 2 ==> 
-        (m_state(1) == SENDPONG || m_state(1) == WAITPING);
+    invariant server_states: 
+        m_alive(1) ==> 
+            m_state(1) == SENDPONG || 
+            m_state(1) == WAITPING;
 
-    invariant cant_both_send: m_state(0) != SENDPING || m_state(1) != SENDPONG;
+    invariant cant_both_send: 
+        m_state(0) != SENDPING || 
+        m_state(1) != SENDPONG;
 
-    // If the client is in init, then the server is in WAITPING, if it exists
-    invariant client_init_means_server_waitping: m_state(0) == INIT ==>
-        (m_count() == 2 ==> m_state(1) == WAITPING);
+    // if the client is in init, then the server is in WAITPING, if it exists
+    invariant client_init_means_server_waitping: 
+        m_state(0) == INIT ==>
+            m_alive(1) ==> m_state(1) == WAITPING;
 
-    // If the client is in init entry, then the server doesn't exist and events are empty
-    invariant client_init_entry_no_server: (m_state(0) == INIT && m_entry(0)) ==>
-        (m_count() == 1 && e_count() == 0);
+    // if the client is in init entry, then the server doesn't exist and events are empty
+    invariant client_init_entry_no_server: 
+        m_state(0) == INIT && m_entry(0) ==>
+            m_count() == 1 && e_count() == 0;
 
-    // If the client is in init but not entry, then the server exists and success is the only event
-    invariant client_init_success: (m_state(0) == INIT && !m_entry(0)) ==>
-        (m_count() == 2 && e_count() == 1 &&
-        e_signal(e_head()) == SUCCESS &&
-        e_target(e_head()) == 0);
+    // if the client is in init but not entry, then the server exists and success is the only event
+    invariant client_init_success: 
+        m_state(0) == INIT && !m_entry(0) ==>
+            m_count() == 2 && e_count() == 1 &&
+            e_signal(e_head()) == SUCCESS &&
+            e_target(e_head()) == 0;
 
-    // If the client is in SENDPING entry then there are no events 
-    invariant client_send_ping_entry_no_events: (m_state(0) == SENDPING && m_entry(0)) ==> e_count() == 0;
+    // if the client is in SENDPING entry then there are no events 
+    invariant client_send_ping_entry_no_events: 
+        m_state(0) == SENDPING && m_entry(0) ==> e_count() == 0;
 
-    // If the client is in SENDPING not entry and the server is in WAITPING, then there are two events: success and ping 
-    invariant client_send_ping_not_entry: (m_state(0) == SENDPING && !m_entry(0) && m_state(1) == WAITPING) ==>
-        (e_count() == 2 && 
-        e_signal(e_head()) == SUCCESS &&
-        e_target(e_head()) == 0 &&
-        e_signal(e_head() + 1) == PING &&
-        e_target(e_head() + 1) == 1);
+    // if the client is in SENDPING not entry and the server is in WAITPING, then there are two events: success and ping 
+    invariant client_send_ping_not_entry: 
+        (m_state(0) == SENDPING && !m_entry(0) && m_state(1) == WAITPING) ==>
+            (e_count() == 2 && 
+            e_signal(e_head()) == SUCCESS &&
+            e_target(e_head()) == 0 &&
+            e_signal(e_head() + 1) == PING &&
+            e_target(e_head() + 1) == 1);
 
-    // If the client is waiting for a pong, then there is a single pong event or a success before it
-    invariant client_wait_pong_events: m_state(1) == WAITPONG ==>
-        (e_count() == 2 ==>
-        (e_signal(e_head()) == SUCCESS &&
-        e_target(e_head()) == 1 &&
-        e_signal(e_head() + 1) == PONG &&
-        e_target(e_head() + 1) == 0));
+    // if the client is waiting for a pong, then there is a single pong event or a success before it
+    invariant client_wait_pong_events: 
+        m_state(1) == WAITPONG ==>
+            (e_count() == 2 ==>
+            (e_signal(e_head()) == SUCCESS &&
+            e_target(e_head()) == 1 &&
+            e_signal(e_head() + 1) == PONG &&
+            e_target(e_head() + 1) == 0));
 
-    // If the server is in SENDPONG entry then there are no events 
-    invariant server_send_pong_entry_no_events: (m_state(1) == SENDPONG && m_entry(1)) ==> e_count() == 0;
+    // if the server is in SENDPONG entry then there are no events 
+    invariant server_send_pong_entry_no_events: 
+        m_state(1) == SENDPONG && m_entry(1) ==> 
+            e_count() == 0;
 
-    // If the server is in SENDPONG not entry and the client is in WAITPONG, then there are two events: success and ping 
+    // if the server is in SENDPONG not entry and the client is in WAITPONG, then there are two events: success and ping 
     invariant server_send_pong_not_entry:
-        (m_state(1) == SENDPONG && !m_entry(1) && m_state(0) == WAITPONG) ==>
-        (e_count() == 2 && 
-        e_signal(e_head()) == SUCCESS &&
-        e_target(e_head()) == 1 &&
-        e_signal(e_head() + 1) == PONG &&
-        e_target(e_head() + 1) == 0);
+        m_state(1) == SENDPONG && !m_entry(1) && m_state(0) == WAITPONG ==>
+            (e_count() == 2 && 
+            e_signal(e_head()) == SUCCESS &&
+            e_target(e_head()) == 1 &&
+            e_signal(e_head() + 1) == PONG &&
+            e_target(e_head() + 1) == 0);
 
-    // If the server is waiting for a ping, then there is a single ping event or a success before it
-    invariant server_wait_ping_events: m_state(1) == WAITPING ==>
-        (e_count() == 2 ==>
-        (e_signal(e_head()) == SUCCESS &&
-        e_target(e_head()) == 0 &&
-        e_signal(e_head() + 1) == PING &&
-        e_target(e_head() + 1) == 1));
+    // if the server is waiting for a ping, then there is a single ping event or a success before it
+    invariant server_wait_ping_events: 
+        m_state(1) == WAITPING ==>
+            e_count() == 2 ==>
+                e_signal(e_head()) == SUCCESS &&
+                e_target(e_head()) == 0 &&
+                e_signal(e_head() + 1) == PING &&
+                e_target(e_head() + 1) == 1;
 
-    invariant wait_wait_1: (m_state(0) == WAITPONG && m_state(1) == WAITPING) ==>
-        (e_count() == 1 &&
-        ((e_signal(e_head()) == PING &&
-        e_target(e_head()) == 1) ||
-        ((e_signal(e_head()) == PONG &&
-        e_target(e_head()) == 0))));
+    // if both machines are waitng, then there is only one event, and it is going to the right place
+    invariant wait_wait_correct: 
+        m_state(0) == WAITPONG && m_state(1) == WAITPING ==>
+            (e_count() == 1 &&
+            ((e_signal(e_head()) == PING &&
+            e_target(e_head()) == 1) ||
+            ((e_signal(e_head()) == PONG &&
+            e_target(e_head()) == 0))));
+
+
+    // OTHER INTERESTING PROPERTIES
+    // every target exists 
+    invariant existing_target: forall (x : event_id) :: 
+        e_valid(x) ==> m_alive(e_target(x));
 
     control {
         v = induction;
