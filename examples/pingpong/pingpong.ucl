@@ -1,6 +1,7 @@
 module main {
 
     type machine_id = integer;
+    type event_id   = integer;
 
     // events
     type signal_t = enum { PING, PONG, SUCCESS };
@@ -17,15 +18,6 @@ module main {
         entry: boolean
     };
 
-    // event queues
-    type event_id      = integer;
-    type event_queue_t = record { 
-        data: [event_id]event_t,
-        head: event_id, 
-        tail: event_id,
-        size: event_id
-    };
-
     // machines
     type kind_t    = enum { CLIENT, SERVER };
     type machine_t = record {
@@ -34,78 +26,84 @@ module main {
         state: state_t
     };
 
-    // machine lists
-    type machine_list_t = record { 
-        data  : [machine_id]machine_t,
-        count : machine_id,
-        events: event_queue_t
+    // state of the system
+    type system_t = record { 
+        machines: [machine_id]machine_t,
+        m_count : machine_id,
+        events  : [event_id]event_t,
+        e_head  : event_id, 
+        e_tail  : event_id,
+        e_size  : event_id
     };
 
     // define shortcuts: "m_" prefix is for machines "e_" prefix is for events
-    define m_count   () : machine_id  = machines.count;
-    define e_head    () : event_id    = machines.events.head;
-    define e_tail    () : event_id    = machines.events.tail;
-    define e_count   () : event_id    = machines.events.size;
-    define e_signal (id : event_id)   : signal_t   = machines.events.data[id].signal;
-    define e_target (id : event_id)   : machine_id = machines.events.data[id].target;
+    define m_count   () : machine_id  = system.m_count;
+    define e_head    () : event_id    = system.e_head;
+    define e_tail    () : event_id    = system.e_tail;
+    define e_count   () : event_id    = system.e_size;
+    define e_signal (id : event_id)   : signal_t   = system.events[id].signal;
+    define e_target (id : event_id)   : machine_id = system.events[id].target;
     define e_valid  (id : event_id)   : boolean    = id >= e_head() && id < e_tail();
-    define m_get    (id : machine_id) : machine_t  = machines.data[id];
-    define m_kind   (id : machine_id) : kind_t     = machines.data[id].kind;
-    define m_state  (id : machine_id) : state_e    = machines.data[id].state.name;
-    define m_entry  (id : machine_id) : boolean    = machines.data[id].state.entry;
-    define m_alive  (id : machine_id) : boolean    = id >= 0 && id < machines.count && machines.data[id].alive;
+    define m_get    (id : machine_id) : machine_t  = system.machines[id];
+    define m_kind   (id : machine_id) : kind_t     = system.machines[id].kind;
+    define m_state  (id : machine_id) : state_e    = system.machines[id].state.name;
+    define m_entry  (id : machine_id) : boolean    = system.machines[id].state.entry;
+    define m_alive  (id : machine_id) : boolean    = id >= 0 && id < system.m_count && system.machines[id].alive;
 
     // procedures for event queues
     procedure [inline] reset_events() 
-        modifies machines;
+        modifies system;
     {
-        machines.events.head = 0;
-        machines.events.tail = 0;
-        machines.events.size = 0;
+        system.e_head = 0;
+        system.e_tail = 0;
+        system.e_size = 0;
     }
 
     procedure [inline] push_event(e: event_t) 
-        modifies machines;
+        modifies system;
     {
-        machines.events.data = machines.events.data[e_tail() -> e];
-        machines.events.tail = e_tail() + 1;
-        machines.events.size = e_count() + 1;
+        system.events = system.events[e_tail() -> e];
+        system.e_tail = e_tail()  + 1;
+        system.e_size = e_count() + 1;
     }
 
     procedure [inline] pop_event() 
         returns (e: event_t)
-        modifies machines;  {
-        e = machines.events.data[e_head()];
-        machines.events.head = e_head() + 1;
-        machines.events.size = e_count() - 1;
+        modifies system;  
+    {
+        e = system.events[e_head()];
+
+        system.e_head = e_head()  + 1;
+        system.e_size = e_count() - 1;
     }
 
     //  procedures for machine lists
     procedure [inline] reset_machines() 
-        modifies machines;
+        modifies system;
     {
-        machines.count = 0;
+        system.m_count = 0;
     }
 
     procedure [inline] add_machine(m: machine_t) 
-        modifies machines;  {
-        machines.data  = machines.data[m_count() -> m];
-        machines.count = m_count() + 1;
+        modifies system;
+    {
+        system.machines = system.machines[m_count() -> m];
+        system.m_count  = m_count() + 1;
     }
 
     procedure [inline] delete_machine(id: machine_id) 
-        modifies machines;
+        modifies system;
     {
         var tmp : machine_t;
 
-        tmp           = m_get(id);
-        tmp.alive     = false;
-        machines.data = machines.data[id -> tmp];
+        tmp             = m_get(id);
+        tmp.alive       = false;
+        system.machines = system.machines[id -> tmp];
     }
 
     // procedures for the model
     procedure [inline] init_machines() 
-        modifies machines;
+        modifies system;
     {
         var tmp: machine_t;
 
@@ -131,7 +129,7 @@ module main {
     }
 
     procedure [inline] client_init(e: event_t) 
-        modifies machines;
+        modifies system;
         requires m_kind(e.target)  == CLIENT;
         requires m_state(e.target) == INIT;
         requires !m_entry(e.target); 
@@ -146,11 +144,11 @@ module main {
             tmp.state.name = BAD;
         }
 
-        machines.data = machines.data[e.target -> tmp];
+        system.machines = system.machines[e.target -> tmp];
     }
 
     procedure [inline] client_send_ping(e: event_t) 
-        modifies machines;
+        modifies system;
         requires m_kind(e.target)  == CLIENT;
         requires m_state(e.target) == SENDPING;
         requires !m_entry(e.target); 
@@ -165,11 +163,11 @@ module main {
             tmp.state.name = BAD;
         }
 
-        machines.data = machines.data[e.target -> tmp];
+        system.machines = system.machines[e.target -> tmp];
     }
 
     procedure [inline] client_wait_pong(e: event_t) 
-        modifies machines;
+        modifies system;
         requires m_kind(e.target)  == CLIENT;
         requires m_state(e.target) == WAITPONG;
     {
@@ -183,11 +181,11 @@ module main {
             tmp.state.name = BAD;
         }
 
-        machines.data = machines.data[e.target -> tmp];
+        system.machines = system.machines[e.target -> tmp];
     }
 
     procedure [inline] server_send_pong(e: event_t) 
-        modifies machines;
+        modifies system;
         requires m_kind(e.target)  == SERVER;
         requires m_state(e.target) == SENDPONG;
         requires !m_entry(e.target); 
@@ -202,11 +200,11 @@ module main {
             tmp.state.name = BAD;
         }
 
-        machines.data = machines.data[e.target -> tmp];
+        system.machines = system.machines[e.target -> tmp];
     }
 
     procedure [inline] server_wait_ping(e: event_t) 
-        modifies machines;
+        modifies system;
         requires m_kind(e.target)  == SERVER;
         requires m_state(e.target) == WAITPING;
     {
@@ -220,11 +218,11 @@ module main {
             tmp.state.name = BAD;
         }
 
-        machines.data = machines.data[e.target -> tmp];
+        system.machines = system.machines[e.target -> tmp];
     }
 
     procedure [inline] client_init_entry(id: machine_id) 
-        modifies machines;
+        modifies system;
         requires m_kind(id)  == CLIENT;
         requires m_state(id) == INIT;
         requires m_entry(id); 
@@ -244,11 +242,11 @@ module main {
         call (server) = create_server();
         call ()       = add_machine(server);
 
-        machines.data = machines.data[id -> tmp];
+        system.machines = system.machines[id -> tmp];
     }
 
     procedure [inline] client_send_ping_entry(source: machine_id, target: machine_id) 
-        modifies machines;
+        modifies system;
         requires m_kind(source)  == CLIENT;
         requires m_state(source) == SENDPING;
         requires m_entry(source); 
@@ -270,11 +268,11 @@ module main {
         ping.target = target;
         call () = push_event(ping);
 
-        machines.data = machines.data[source -> tmp];
+        system.machines = system.machines[source -> tmp];
     }
 
     procedure [inline] server_send_pong_entry(source: machine_id, target: machine_id) 
-        modifies machines;
+        modifies system;
         requires m_kind(source)  == SERVER;
         requires m_state(source) == SENDPONG;
         requires m_entry(source); 
@@ -296,11 +294,11 @@ module main {
         pong.target = target;
         call () = push_event(pong);
 
-        machines.data = machines.data[source -> tmp];
+        system.machines = system.machines[source -> tmp];
     }
 
     procedure [inline] act() 
-        modifies machines;
+        modifies system;
     {
         var s: machine_id;
         assume(m_alive(s));
@@ -346,7 +344,7 @@ module main {
     }
 
     procedure [inline] react() 
-        modifies machines;
+        modifies system;
     {
         var e  : event_t;
 
@@ -395,7 +393,7 @@ module main {
         esac
     }
 
-    var machines: machine_list_t;
+    var system: system_t;
 
     init {
         call () = init_machines();
@@ -526,21 +524,21 @@ module main {
         print_results;
 
         v.print_cex(
-            machines.count,
+            system.m_count,
 
-            machines.events.size,
-            machines.events.data[machines.events.head].signal,
-            machines.events.data[machines.events.head].target,
-            machines.events.data[machines.events.head+1].signal,
-            machines.events.data[machines.events.head+1].target,
+            system.e_size,
+            system.events[system.e_head].signal,
+            system.events[system.e_head].target,
+            system.events[system.e_head+1].signal,
+            system.events[system.e_head+1].target,
 
-            machines.data[0].kind,
-            machines.data[0].state.name,
-            machines.data[0].state.entry,
+            system.machines[0].kind,
+            system.machines[0].state.name,
+            system.machines[0].state.entry,
 
-            machines.data[1].kind,
-            machines.data[1].state.name,
-            machines.data[1].state.entry
+            system.machines[1].kind,
+            system.machines[1].state.name,
+            system.machines[1].state.entry
         );
     }
 }
