@@ -4,7 +4,7 @@ module main {
     type event_id   = integer;
 
     // events
-    type signal_t = enum { PING, PONG, SUCCESS };
+    type signal_t = enum { PING, PONG, SUCCESS, ACT };
     type event_t  = record {
         signal: signal_t,
         source: machine_id,
@@ -12,7 +12,7 @@ module main {
     };
 
     // states
-    type state_e = enum { INIT, SENDPING, WAITPING, WAITPONG, SENDPONG, BAD};
+    type state_e = enum { INIT, SENDPING, WAITPING, WAITPONG, SENDPONG };
     type state_t = record {
         name : state_e,
         entry: boolean
@@ -114,7 +114,8 @@ module main {
     }
 
     procedure [inline] create_client() 
-        returns (client: machine_t) {
+        returns (client: machine_t) 
+    {
         client.alive       = true;
         client.kind        = CLIENT;
         client.state.name  = INIT;
@@ -122,64 +123,99 @@ module main {
     }
 
     procedure [inline] create_server() 
-        returns (server: machine_t) {
+        returns (server: machine_t) 
+    {
         server.alive       = true;
         server.kind        = SERVER;
         server.state.name  = WAITPING;
     }
 
-    procedure [inline] client_init(e: event_t) 
+    procedure [inline] client_init(e: event_t)
         modifies system;
         requires m_kind(e.target)  == CLIENT;
         requires m_state(e.target) == INIT;
-        requires !m_entry(e.target); 
+        requires m_entry(e.target) ==> e.signal == ACT;
+        requires !m_entry(e.target) ==> e.signal == SUCCESS;
     {
-        var tmp : machine_t;
-        tmp = m_get(e.target); 
+        if (m_entry(e.target)) {
+            var e2     : event_t;
+            var server : machine_t;
+            var tmp    : machine_t;
 
-        if (e.signal == SUCCESS) {
+            tmp = m_get(e.target);
+            tmp.state.entry = false;
+
+            e2.signal = SUCCESS;
+            e2.source = e.target;
+            e2.target = e.target;
+
+            call ()       = push_event(e2);
+            call (server) = create_server();
+            call ()       = add_machine(server);
+
+            system.machines = system.machines[e.target -> tmp];
+        } else {
+            var tmp : machine_t;
+            tmp = m_get(e.target); 
+
             tmp.state.entry = true;
             tmp.state.name  = SENDPING;
-        } else {
-            tmp.state.name = BAD;
-        }
 
-        system.machines = system.machines[e.target -> tmp];
+            system.machines = system.machines[e.target -> tmp];
+        }
     }
 
     procedure [inline] client_send_ping(e: event_t) 
         modifies system;
         requires m_kind(e.target)  == CLIENT;
         requires m_state(e.target) == SENDPING;
-        requires !m_entry(e.target); 
+        requires m_entry(e.target) ==> e.signal == ACT;
+        requires !m_entry(e.target) ==> e.signal == SUCCESS;
     {
-        var tmp : machine_t;
-        tmp = m_get(e.target);
+        if (m_entry(e.target)) {
+            var success : event_t;
+            var ping    : event_t;
+            var tmp     : machine_t;
+            var dest    : machine_id;
 
-        if (e.signal == SUCCESS) {
+            assume(m_alive(dest) && dest != e.target);
+
+            tmp             = m_get(e.target);
+            tmp.state.entry = false;
+
+            success.signal = SUCCESS;
+            success.source = e.target;
+            success.target = e.target;
+            call () = push_event(success);
+
+            ping.signal = PING;
+            ping.source = e.target;
+            ping.target = dest;
+            call () = push_event(ping);
+
+            system.machines = system.machines[e.target -> tmp];
+        } else {
+            var tmp : machine_t;
+            tmp = m_get(e.target);
+
             tmp.state.entry = true;
             tmp.state.name  = WAITPONG;
-        } else {
-            tmp.state.name = BAD;
-        }
 
-        system.machines = system.machines[e.target -> tmp];
+            system.machines = system.machines[e.target -> tmp];
+        }
     }
 
     procedure [inline] client_wait_pong(e: event_t) 
         modifies system;
         requires m_kind(e.target)  == CLIENT;
         requires m_state(e.target) == WAITPONG;
+        requires e.signal == PONG;
     {
         var tmp : machine_t;
         tmp = m_get(e.target);
 
-        if (e.signal == PONG) {
-            tmp.state.entry = true;
-            tmp.state.name  = SENDPING;
-        } else {
-            tmp.state.name = BAD;
-        }
+        tmp.state.entry = true;
+        tmp.state.name  = SENDPING;
 
         system.machines = system.machines[e.target -> tmp];
     }
@@ -188,187 +224,91 @@ module main {
         modifies system;
         requires m_kind(e.target)  == SERVER;
         requires m_state(e.target) == SENDPONG;
-        requires !m_entry(e.target); 
+        requires m_entry(e.target) ==> e.signal == ACT;
+        requires !m_entry(e.target) ==> e.signal == SUCCESS;
     {
-        var tmp : machine_t;
-        tmp = m_get(e.target);
+        if (m_entry(e.target)) {
+            var success : event_t;
+            var pong    : event_t;
+            var tmp     : machine_t;
+            var dest    : machine_id;
 
-        if (e.signal == SUCCESS) {
+            assume(m_alive(dest) && dest != e.target);
+
+            tmp             = m_get(e.target);
+            tmp.state.entry = false;
+
+            success.signal = SUCCESS;
+            success.source = e.target;
+            success.target = e.target;
+            call () = push_event(success);
+
+            pong.signal = PONG;
+            pong.source = e.target;
+            pong.target = dest;
+            call () = push_event(pong);
+
+            system.machines = system.machines[e.target -> tmp];
+        } else {
+            var tmp : machine_t;
+            tmp = m_get(e.target);
+
             tmp.state.entry = true;
             tmp.state.name  = WAITPING;
-        } else {
-            tmp.state.name = BAD;
-        }
 
-        system.machines = system.machines[e.target -> tmp];
+            system.machines = system.machines[e.target -> tmp];
+        }
     }
 
     procedure [inline] server_wait_ping(e: event_t) 
         modifies system;
         requires m_kind(e.target)  == SERVER;
         requires m_state(e.target) == WAITPING;
+        requires e.signal == PING;
     {
         var tmp : machine_t;
         tmp = m_get(e.target);
 
-        if (e.signal == PING) {
-            tmp.state.entry = true;
-            tmp.state.name  = SENDPONG;
-        } else {
-            tmp.state.name = BAD;
-        }
+        tmp.state.entry = true;
+        tmp.state.name  = SENDPONG;
 
         system.machines = system.machines[e.target -> tmp];
     }
 
-    procedure [inline] client_init_entry(id: machine_id) 
-        modifies system;
-        requires m_kind(id)  == CLIENT;
-        requires m_state(id) == INIT;
-        requires m_entry(id); 
-    {
-        var e      : event_t;
-        var server : machine_t;
-        var tmp    : machine_t;
-
-        tmp = m_get(id);
-        tmp.state.entry = false;
-
-        e.signal = SUCCESS;
-        e.source = id;
-        e.target = id;
-
-        call ()       = push_event(e);
-        call (server) = create_server();
-        call ()       = add_machine(server);
-
-        system.machines = system.machines[id -> tmp];
-    }
-
-    procedure [inline] client_send_ping_entry(source: machine_id, target: machine_id) 
-        modifies system;
-        requires m_kind(source)  == CLIENT;
-        requires m_state(source) == SENDPING;
-        requires m_entry(source); 
-    {
-        var success : event_t;
-        var ping    : event_t;
-        var tmp     : machine_t;
-
-        tmp             = m_get(source);
-        tmp.state.entry = false;
-
-        success.signal = SUCCESS;
-        success.source = source;
-        success.target = source;
-        call () = push_event(success);
-
-        ping.signal = PING;
-        ping.source = source;
-        ping.target = target;
-        call () = push_event(ping);
-
-        system.machines = system.machines[source -> tmp];
-    }
-
-    procedure [inline] server_send_pong_entry(source: machine_id, target: machine_id) 
-        modifies system;
-        requires m_kind(source)  == SERVER;
-        requires m_state(source) == SENDPONG;
-        requires m_entry(source); 
-    {
-        var success : event_t;
-        var pong    : event_t;
-        var tmp     : machine_t;
-
-        tmp             = m_get(source);
-        tmp.state.entry = false;
-
-        success.signal = SUCCESS;
-        success.source = source;
-        success.target = source;
-        call () = push_event(success);
-
-        pong.signal = PONG;
-        pong.source = source;
-        pong.target = target;
-        call () = push_event(pong);
-
-        system.machines = system.machines[source -> tmp];
-    }
-
-    procedure [inline] act() 
-        modifies system;
-    {
-        var s: machine_id;
-        assume(m_alive(s));
-
-        case 
-            (m_kind(s) == CLIENT): {
-                case
-                (m_state(s) == INIT): {
-                       if (m_entry(s)) {
-                            call () = client_init_entry(s);
-                        }
-                    }
-                (m_state(s) == SENDPING): {
-                       if (m_entry(s)) {
-                            var t: machine_id;
-                            assume(m_alive(t) && t != s);
-                            call () = client_send_ping_entry(s, t);
-                        }
-                    }
-                (true) : {
-                    // do nothings
-                }
-                esac
-            }
-            (m_kind(s) == SERVER): {
-                case
-                (m_state(s) == SENDPONG): {
-                       if (m_entry(s)) {
-                            var t: machine_id;
-                            assume(m_alive(t) && t != s);
-                            call () = server_send_pong_entry(s, t);
-                        }
-                    }
-                (true) : {
-                    // do nothings
-                }
-                esac
-            }
-        (true) : {
-            // do nothings
-        }
-        esac
-    }
-
-    procedure [inline] react() 
+    procedure [inline] step() 
         modifies system;
     {
         var e  : event_t;
+        if (*) {
+            assume(m_alive(e.target) && e.source == e.target);
+            // IMPORTANT: don't send ACT to a machine that is waiting
+            assume(m_entry(e.target) && (
+                m_state(e.target) == SENDPING || 
+                m_state(e.target) == INIT || 
+                m_state(e.target) == SENDPONG));
 
-        call (e) = pop_event();
+            e.signal = ACT;
+        } else {
+            assume(e_count() > 0);
+            call (e) = pop_event();
+        }
 
         // case switch on every state of the entire system
         case 
         (m_kind(e.target) == CLIENT) : {
             case 
             (m_state(e.target) == INIT) : {
-                if (!m_entry(e.target)) {
-                    call () = client_init(e);
-                }
+                call () = client_init(e);
             }
             (m_state(e.target) == WAITPONG) : {
                 call () = client_wait_pong(e);
             }
             (m_state(e.target) == SENDPING) : {
-                if (!m_entry(e.target)) {
-                    call () = client_send_ping(e);
-                }
+                call () = client_send_ping(e);
             }
             (true) : {
-                // do nothing
+                // should never get here
+                assert(false);
             }
             esac
         } 
@@ -378,17 +318,17 @@ module main {
                 call () = server_wait_ping(e);
             }
             (m_state(e.target) == SENDPONG) : {
-                if (!m_entry(e.target)) {
-                    call () = server_send_pong(e);
-                }
+                call () = server_send_pong(e);
             }
             (true) : {
-                // do nothing
+                // should never get here
+                assert(false);
             }
             esac
         }
         (true) : {
-            // do nothing
+            // should never get here
+            assert(false);
         }
         esac
     }
@@ -400,17 +340,8 @@ module main {
     }
 
     next {
-        if (*) {
-            call () = act();
-        } else {
-            assume(e_count() > 0);
-            call () = react();
-        }
+        call () = step();
     }
-
-    // MAIN INVARIANT
-    invariant never_bad: forall (id: machine_id) :: 
-        m_alive(id) ==> m_state(id) != BAD;
 
     // AUXILLARY INVARIANTS
     // first machine is client, second is server, if it exists
