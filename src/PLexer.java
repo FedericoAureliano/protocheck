@@ -23,14 +23,14 @@ public class PLexer extends Lexer {
 		GOTO=31, GROUP=32, HALT=33, HOT=34, IF=35, IGNORE=36, IN=37, KEYS=38, 
 		NEW=39, OBSERVES=40, ON=41, POP=42, PRINT=43, PUSH=44, RAISE=45, RECEIVE=46, 
 		RETURN=47, SEND=48, SIZEOF=49, SPEC=50, START=51, STATE=52, THIS=53, TYPE=54, 
-		VALUES=55, VAR=56, WHILE=57, WITH=58, CHOOSE=59, MODULE=60, IMPLEMENTATION=61, 
-		TEST=62, REFINES=63, COMPOSE=64, UNION=65, HIDEE=66, HIDEI=67, RENAME=68, 
-		SAFE=69, MAIN=70, RECEIVES=71, SENDS=72, CREATES=73, TO=74, BoolLiteral=75, 
-		IntLiteral=76, NullLiteral=77, StringLiteral=78, FAIRNONDET=79, NONDET=80, 
-		LNOT=81, LAND=82, LOR=83, EQ=84, NE=85, LE=86, GE=87, LT=88, GT=89, RARROW=90, 
-		ASSIGN=91, INSERT=92, REMOVE=93, ADD=94, SUB=95, MUL=96, DIV=97, LBRACE=98, 
-		RBRACE=99, LBRACK=100, RBRACK=101, LPAREN=102, RPAREN=103, SEMI=104, COMMA=105, 
-		DOT=106, COLON=107, Iden=108, Whitespace=109, BlockComment=110, LineComment=111;
+		VALUES=55, VAR=56, WHILE=57, WITH=58, CHOOSE=59, MAIN=60, MODULE=61, IMPLEMENTATION=62, 
+		TEST=63, REFINES=64, COMPOSE=65, UNION=66, HIDEE=67, HIDEI=68, RENAME=69, 
+		SAFE=70, RECEIVES=71, SENDS=72, CREATES=73, TO=74, BoolLiteral=75, IntLiteral=76, 
+		NullLiteral=77, StringLiteral=78, FAIRNONDET=79, NONDET=80, LNOT=81, LAND=82, 
+		LOR=83, EQ=84, NE=85, LE=86, GE=87, LT=88, GT=89, RARROW=90, ASSIGN=91, 
+		INSERT=92, REMOVE=93, ADD=94, SUB=95, MUL=96, DIV=97, LBRACE=98, RBRACE=99, 
+		LBRACK=100, RBRACK=101, LPAREN=102, RPAREN=103, SEMI=104, COMMA=105, DOT=106, 
+		COLON=107, Iden=108, Whitespace=109, BlockComment=110, LineComment=111;
 	public static String[] channelNames = {
 		"DEFAULT_TOKEN_CHANNEL", "HIDDEN"
 	};
@@ -46,9 +46,9 @@ public class PLexer extends Lexer {
 		"DO", "ELSE", "ENTRY", "EXIT", "FORMAT", "FUN", "GOTO", "GROUP", "HALT", 
 		"HOT", "IF", "IGNORE", "IN", "KEYS", "NEW", "OBSERVES", "ON", "POP", "PRINT", 
 		"PUSH", "RAISE", "RECEIVE", "RETURN", "SEND", "SIZEOF", "SPEC", "START", 
-		"STATE", "THIS", "TYPE", "VALUES", "VAR", "WHILE", "WITH", "CHOOSE", "MODULE", 
-		"IMPLEMENTATION", "TEST", "REFINES", "COMPOSE", "UNION", "HIDEE", "HIDEI", 
-		"RENAME", "SAFE", "MAIN", "RECEIVES", "SENDS", "CREATES", "TO", "BoolLiteral", 
+		"STATE", "THIS", "TYPE", "VALUES", "VAR", "WHILE", "WITH", "CHOOSE", "MAIN", 
+		"MODULE", "IMPLEMENTATION", "TEST", "REFINES", "COMPOSE", "UNION", "HIDEE", 
+		"HIDEI", "RENAME", "SAFE", "RECEIVES", "SENDS", "CREATES", "TO", "BoolLiteral", 
 		"IntLiteral", "NullLiteral", "StringLiteral", "StringCharacters", "StringCharacter", 
 		"EscapeSequence", "FAIRNONDET", "NONDET", "LNOT", "LAND", "LOR", "EQ", 
 		"NE", "LE", "GE", "LT", "GT", "RARROW", "ASSIGN", "INSERT", "REMOVE", 
@@ -66,13 +66,12 @@ public class PLexer extends Lexer {
 		"'if'", "'ignore'", "'in'", "'keys'", "'new'", "'observes'", "'on'", "'pop'", 
 		"'print'", "'push'", "'raise'", "'receive'", "'return'", "'send'", "'sizeof'", 
 		"'spec'", "'start'", "'state'", "'this'", "'type'", "'values'", "'var'", 
-		"'while'", "'with'", "'choose'", "'module'", "'implementation'", "'test'", 
-		"'refines'", "'compose'", "'union'", "'hidee'", "'hidei'", "'rename'", 
-		"'safe'", "'main'", "'receives'", "'sends'", "'creates'", "'to'", null, 
-		null, "'null'", null, "'$$'", "'$'", "'!'", "'&&'", "'||'", "'=='", "'!='", 
-		"'<='", "'>='", "'<'", "'>'", "'->'", "'='", "'+='", "'-='", "'+'", "'-'", 
-		"'*'", "'/'", "'{'", "'}'", "'['", "']'", "'('", "')'", "';'", "','", 
-		"'.'", "':'"
+		"'while'", "'with'", "'choose'", "'main'", "'module'", "'implementation'", 
+		"'test'", "'refines'", "'compose'", "'union'", "'hidee'", "'hidei'", "'rename'", 
+		"'safe'", "'receives'", "'sends'", "'creates'", "'to'", null, null, "'null'", 
+		null, "'$$'", "'$'", "'!'", "'&&'", "'||'", "'=='", "'!='", "'<='", "'>='", 
+		"'<'", "'>'", "'->'", "'='", "'+='", "'-='", "'+'", "'-'", "'*'", "'/'", 
+		"'{'", "'}'", "'['", "']'", "'('", "')'", "';'", "','", "'.'", "':'"
 	};
 	private static final String[] _SYMBOLIC_NAMES = {
 		null, "ANY", "BOOL", "ENUM", "EVENT", "EVENTSET", "FLOAT", "INT", "MACHINE", 
@@ -81,9 +80,9 @@ public class PLexer extends Lexer {
 		"DO", "ELSE", "ENTRY", "EXIT", "FORMAT", "FUN", "GOTO", "GROUP", "HALT", 
 		"HOT", "IF", "IGNORE", "IN", "KEYS", "NEW", "OBSERVES", "ON", "POP", "PRINT", 
 		"PUSH", "RAISE", "RECEIVE", "RETURN", "SEND", "SIZEOF", "SPEC", "START", 
-		"STATE", "THIS", "TYPE", "VALUES", "VAR", "WHILE", "WITH", "CHOOSE", "MODULE", 
-		"IMPLEMENTATION", "TEST", "REFINES", "COMPOSE", "UNION", "HIDEE", "HIDEI", 
-		"RENAME", "SAFE", "MAIN", "RECEIVES", "SENDS", "CREATES", "TO", "BoolLiteral", 
+		"STATE", "THIS", "TYPE", "VALUES", "VAR", "WHILE", "WITH", "CHOOSE", "MAIN", 
+		"MODULE", "IMPLEMENTATION", "TEST", "REFINES", "COMPOSE", "UNION", "HIDEE", 
+		"HIDEI", "RENAME", "SAFE", "RECEIVES", "SENDS", "CREATES", "TO", "BoolLiteral", 
 		"IntLiteral", "NullLiteral", "StringLiteral", "FAIRNONDET", "NONDET", 
 		"LNOT", "LAND", "LOR", "EQ", "NE", "LE", "GE", "LT", "GT", "RARROW", "ASSIGN", 
 		"INSERT", "REMOVE", "ADD", "SUB", "MUL", "DIV", "LBRACE", "RBRACE", "LBRACK", 
@@ -181,9 +180,9 @@ public class PLexer extends Lexer {
 		"\3\64\3\64\3\64\3\64\3\64\3\65\3\65\3\65\3\65\3\65\3\65\3\66\3\66\3\66"+
 		"\3\66\3\66\3\67\3\67\3\67\3\67\3\67\38\38\38\38\38\38\38\39\39\39\39\3"+
 		":\3:\3:\3:\3:\3:\3;\3;\3;\3;\3;\3<\3<\3<\3<\3<\3<\3<\3=\3=\3=\3=\3=\3"+
-		"=\3=\3>\3>\3>\3>\3>\3>\3>\3>\3>\3>\3>\3>\3>\3>\3>\3?\3?\3?\3?\3?\3@\3"+
-		"@\3@\3@\3@\3@\3@\3@\3A\3A\3A\3A\3A\3A\3A\3A\3B\3B\3B\3B\3B\3B\3C\3C\3"+
-		"C\3C\3C\3C\3D\3D\3D\3D\3D\3D\3E\3E\3E\3E\3E\3E\3E\3F\3F\3F\3F\3F\3G\3"+
+		">\3>\3>\3>\3>\3>\3>\3?\3?\3?\3?\3?\3?\3?\3?\3?\3?\3?\3?\3?\3?\3?\3@\3"+
+		"@\3@\3@\3@\3A\3A\3A\3A\3A\3A\3A\3A\3B\3B\3B\3B\3B\3B\3B\3B\3C\3C\3C\3"+
+		"C\3C\3C\3D\3D\3D\3D\3D\3D\3E\3E\3E\3E\3E\3E\3F\3F\3F\3F\3F\3F\3F\3G\3"+
 		"G\3G\3G\3G\3H\3H\3H\3H\3H\3H\3H\3H\3H\3I\3I\3I\3I\3I\3I\3J\3J\3J\3J\3"+
 		"J\3J\3J\3J\3K\3K\3K\3L\3L\3L\3L\3L\3L\3L\3L\3L\5L\u02ab\nL\3M\6M\u02ae"+
 		"\nM\rM\16M\u02af\3N\3N\3N\3N\3N\3O\3O\5O\u02b9\nO\3O\3O\3P\6P\u02be\n"+
@@ -237,9 +236,9 @@ public class PLexer extends Lexer {
 		"\3\2\2\2[\u01e0\3\2\2\2]\u01e6\3\2\2\2_\u01ee\3\2\2\2a\u01f5\3\2\2\2c"+
 		"\u01fa\3\2\2\2e\u0201\3\2\2\2g\u0206\3\2\2\2i\u020c\3\2\2\2k\u0212\3\2"+
 		"\2\2m\u0217\3\2\2\2o\u021c\3\2\2\2q\u0223\3\2\2\2s\u0227\3\2\2\2u\u022d"+
-		"\3\2\2\2w\u0232\3\2\2\2y\u0239\3\2\2\2{\u0240\3\2\2\2}\u024f\3\2\2\2\177"+
-		"\u0254\3\2\2\2\u0081\u025c\3\2\2\2\u0083\u0264\3\2\2\2\u0085\u026a\3\2"+
-		"\2\2\u0087\u0270\3\2\2\2\u0089\u0276\3\2\2\2\u008b\u027d\3\2\2\2\u008d"+
+		"\3\2\2\2w\u0232\3\2\2\2y\u0239\3\2\2\2{\u023e\3\2\2\2}\u0245\3\2\2\2\177"+
+		"\u0254\3\2\2\2\u0081\u0259\3\2\2\2\u0083\u0261\3\2\2\2\u0085\u0269\3\2"+
+		"\2\2\u0087\u026f\3\2\2\2\u0089\u0275\3\2\2\2\u008b\u027b\3\2\2\2\u008d"+
 		"\u0282\3\2\2\2\u008f\u0287\3\2\2\2\u0091\u0290\3\2\2\2\u0093\u0296\3\2"+
 		"\2\2\u0095\u029e\3\2\2\2\u0097\u02aa\3\2\2\2\u0099\u02ad\3\2\2\2\u009b"+
 		"\u02b1\3\2\2\2\u009d\u02b6\3\2\2\2\u009f\u02bd\3\2\2\2\u00a1\u02c3\3\2"+
@@ -340,27 +339,27 @@ public class PLexer extends Lexer {
 		"\u022f\7k\2\2\u022f\u0230\7v\2\2\u0230\u0231\7j\2\2\u0231v\3\2\2\2\u0232"+
 		"\u0233\7e\2\2\u0233\u0234\7j\2\2\u0234\u0235\7q\2\2\u0235\u0236\7q\2\2"+
 		"\u0236\u0237\7u\2\2\u0237\u0238\7g\2\2\u0238x\3\2\2\2\u0239\u023a\7o\2"+
-		"\2\u023a\u023b\7q\2\2\u023b\u023c\7f\2\2\u023c\u023d\7w\2\2\u023d\u023e"+
-		"\7n\2\2\u023e\u023f\7g\2\2\u023fz\3\2\2\2\u0240\u0241\7k\2\2\u0241\u0242"+
-		"\7o\2\2\u0242\u0243\7r\2\2\u0243\u0244\7n\2\2\u0244\u0245\7g\2\2\u0245"+
-		"\u0246\7o\2\2\u0246\u0247\7g\2\2\u0247\u0248\7p\2\2\u0248\u0249\7v\2\2"+
-		"\u0249\u024a\7c\2\2\u024a\u024b\7v\2\2\u024b\u024c\7k\2\2\u024c\u024d"+
-		"\7q\2\2\u024d\u024e\7p\2\2\u024e|\3\2\2\2\u024f\u0250\7v\2\2\u0250\u0251"+
-		"\7g\2\2\u0251\u0252\7u\2\2\u0252\u0253\7v\2\2\u0253~\3\2\2\2\u0254\u0255"+
-		"\7t\2\2\u0255\u0256\7g\2\2\u0256\u0257\7h\2\2\u0257\u0258\7k\2\2\u0258"+
-		"\u0259\7p\2\2\u0259\u025a\7g\2\2\u025a\u025b\7u\2\2\u025b\u0080\3\2\2"+
-		"\2\u025c\u025d\7e\2\2\u025d\u025e\7q\2\2\u025e\u025f\7o\2\2\u025f\u0260"+
-		"\7r\2\2\u0260\u0261\7q\2\2\u0261\u0262\7u\2\2\u0262\u0263\7g\2\2\u0263"+
-		"\u0082\3\2\2\2\u0264\u0265\7w\2\2\u0265\u0266\7p\2\2\u0266\u0267\7k\2"+
-		"\2\u0267\u0268\7q\2\2\u0268\u0269\7p\2\2\u0269\u0084\3\2\2\2\u026a\u026b"+
-		"\7j\2\2\u026b\u026c\7k\2\2\u026c\u026d\7f\2\2\u026d\u026e\7g\2\2\u026e"+
-		"\u026f\7g\2\2\u026f\u0086\3\2\2\2\u0270\u0271\7j\2\2\u0271\u0272\7k\2"+
-		"\2\u0272\u0273\7f\2\2\u0273\u0274\7g\2\2\u0274\u0275\7k\2\2\u0275\u0088"+
-		"\3\2\2\2\u0276\u0277\7t\2\2\u0277\u0278\7g\2\2\u0278\u0279\7p\2\2\u0279"+
-		"\u027a\7c\2\2\u027a\u027b\7o\2\2\u027b\u027c\7g\2\2\u027c\u008a\3\2\2"+
-		"\2\u027d\u027e\7u\2\2\u027e\u027f\7c\2\2\u027f\u0280\7h\2\2\u0280\u0281"+
-		"\7g\2\2\u0281\u008c\3\2\2\2\u0282\u0283\7o\2\2\u0283\u0284\7c\2\2\u0284"+
-		"\u0285\7k\2\2\u0285\u0286\7p\2\2\u0286\u008e\3\2\2\2\u0287\u0288\7t\2"+
+		"\2\u023a\u023b\7c\2\2\u023b\u023c\7k\2\2\u023c\u023d\7p\2\2\u023dz\3\2"+
+		"\2\2\u023e\u023f\7o\2\2\u023f\u0240\7q\2\2\u0240\u0241\7f\2\2\u0241\u0242"+
+		"\7w\2\2\u0242\u0243\7n\2\2\u0243\u0244\7g\2\2\u0244|\3\2\2\2\u0245\u0246"+
+		"\7k\2\2\u0246\u0247\7o\2\2\u0247\u0248\7r\2\2\u0248\u0249\7n\2\2\u0249"+
+		"\u024a\7g\2\2\u024a\u024b\7o\2\2\u024b\u024c\7g\2\2\u024c\u024d\7p\2\2"+
+		"\u024d\u024e\7v\2\2\u024e\u024f\7c\2\2\u024f\u0250\7v\2\2\u0250\u0251"+
+		"\7k\2\2\u0251\u0252\7q\2\2\u0252\u0253\7p\2\2\u0253~\3\2\2\2\u0254\u0255"+
+		"\7v\2\2\u0255\u0256\7g\2\2\u0256\u0257\7u\2\2\u0257\u0258\7v\2\2\u0258"+
+		"\u0080\3\2\2\2\u0259\u025a\7t\2\2\u025a\u025b\7g\2\2\u025b\u025c\7h\2"+
+		"\2\u025c\u025d\7k\2\2\u025d\u025e\7p\2\2\u025e\u025f\7g\2\2\u025f\u0260"+
+		"\7u\2\2\u0260\u0082\3\2\2\2\u0261\u0262\7e\2\2\u0262\u0263\7q\2\2\u0263"+
+		"\u0264\7o\2\2\u0264\u0265\7r\2\2\u0265\u0266\7q\2\2\u0266\u0267\7u\2\2"+
+		"\u0267\u0268\7g\2\2\u0268\u0084\3\2\2\2\u0269\u026a\7w\2\2\u026a\u026b"+
+		"\7p\2\2\u026b\u026c\7k\2\2\u026c\u026d\7q\2\2\u026d\u026e\7p\2\2\u026e"+
+		"\u0086\3\2\2\2\u026f\u0270\7j\2\2\u0270\u0271\7k\2\2\u0271\u0272\7f\2"+
+		"\2\u0272\u0273\7g\2\2\u0273\u0274\7g\2\2\u0274\u0088\3\2\2\2\u0275\u0276"+
+		"\7j\2\2\u0276\u0277\7k\2\2\u0277\u0278\7f\2\2\u0278\u0279\7g\2\2\u0279"+
+		"\u027a\7k\2\2\u027a\u008a\3\2\2\2\u027b\u027c\7t\2\2\u027c\u027d\7g\2"+
+		"\2\u027d\u027e\7p\2\2\u027e\u027f\7c\2\2\u027f\u0280\7o\2\2\u0280\u0281"+
+		"\7g\2\2\u0281\u008c\3\2\2\2\u0282\u0283\7u\2\2\u0283\u0284\7c\2\2\u0284"+
+		"\u0285\7h\2\2\u0285\u0286\7g\2\2\u0286\u008e\3\2\2\2\u0287\u0288\7t\2"+
 		"\2\u0288\u0289\7g\2\2\u0289\u028a\7e\2\2\u028a\u028b\7g\2\2\u028b\u028c"+
 		"\7k\2\2\u028c\u028d\7x\2\2\u028d\u028e\7g\2\2\u028e\u028f\7u\2\2\u028f"+
 		"\u0090\3\2\2\2\u0290\u0291\7u\2\2\u0291\u0292\7g\2\2\u0292\u0293\7p\2"+

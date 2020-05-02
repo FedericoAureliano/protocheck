@@ -3,7 +3,9 @@ import org.antlr.v4.runtime.tree.*;
 
 public class UclidGenerator {
     public static void main(String[] args) throws Exception {
-        CharStream stream = CharStreams.fromFileName("examples/pingpong/pingpong.p");
+        String fileName = "examples/pingpong/pingpong.p";
+        System.out.println("Start parsing " + fileName + "...");
+        CharStream stream = CharStreams.fromFileName(fileName);
         PLexer lexer = new PLexer(stream);
         // create a buffer of tokens pulled from the lexer
         CommonTokenStream tokens = new CommonTokenStream(lexer);

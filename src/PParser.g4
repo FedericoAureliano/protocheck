@@ -89,7 +89,7 @@ interfaceDecl:
 
 // has scope
 implMachineDecl:
-	MACHINE name = iden cardinality? receivesSends* machineBody;
+	MAIN? MACHINE name = iden cardinality? receivesSends* machineBody;
 idenList: names += iden (COMMA names += iden)*;
 
 receivesSends:

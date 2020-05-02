@@ -3,7 +3,7 @@ event PING assert 1: machine;
 event PONG assert 1;
 event SUCCESS;
 
-machine Client {
+main machine Client {
     var server: machine;
 
     start state Init {
@@ -18,7 +18,7 @@ machine Client {
         entry {
 	          send server, PING, this;
 	          raise SUCCESS;
-	}
+	    }
         on SUCCESS goto WaitPong;
     }
 
