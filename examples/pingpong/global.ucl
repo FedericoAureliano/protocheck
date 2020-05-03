@@ -72,7 +72,6 @@ module main {
         modifies system;  
     {
         e = system.events[e_head()];
-
         system.e_head = e_head()  + 1;
         system.e_size = e_count() - 1;
     }
@@ -95,7 +94,6 @@ module main {
         modifies system;
     {
         var tmp : machine_t;
-
         tmp             = m_get(id);
         tmp.alive       = false;
         system.machines = system.machines[id -> tmp];
