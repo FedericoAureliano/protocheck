@@ -1,0 +1,489 @@
+module Common {
+    const client_id : machine_id;
+    const server_id : machine_id;
+    axiom client_id == 0;
+    axiom server_id == 1;
+
+    type machine_id = integer;
+
+    type event_id = integer;
+    type signal_t = enum { PING, PONG, SUCCESS};
+    type event_t  = record {
+        signal: signal_t,
+        source: machine_id,
+        target: machine_id
+    };
+    type event_q = record { 
+        events  : [event_id]event_t,
+        head  : event_id, 
+        tail  : event_id,
+        size  : event_id
+    };
+
+    define head    () : event_id    = event_queue.head;
+    define tail    () : event_id    = event_queue.tail;
+    define size    () : event_id    = event_queue.size;
+    define signal (id : event_id)   : signal_t   = event_queue.events[id].signal;
+    define target (id : event_id)   : machine_id = event_queue.events[id].target;
+    define valid  (id : event_id)   : boolean    = id >= head() && id < tail();
+
+    // procedure [inline]s for event event_queues
+    procedure [inline] reset_events() 
+        modifies event_queue;
+    {
+        event_queue.head = 0;
+        event_queue.tail = 0;
+        event_queue.size = 0;
+    }
+
+    procedure [inline] push_event(e: event_t) 
+        modifies event_queue;
+    {
+        event_queue.events = event_queue.events[tail() -> e];
+        event_queue.tail = tail()  + 1;
+        event_queue.size = size() + 1;
+    }
+
+    procedure [inline] pop_event() 
+        returns (e: event_t)
+        modifies event_queue;  
+    {
+        e = event_queue.events[head()];
+
+        event_queue.head = head()  + 1;
+        event_queue.size = size() - 1;
+    }
+
+    sharedvar event_queue : event_q;
+
+    init {
+        call () = reset_events();
+    }
+
+    next {
+        if (*) {
+            var e : event_t;
+            call () = push_event(e);
+        } else {
+            var e : event_t;
+            assume(event_queue.size > 0);
+
+            call (e) = pop_event();
+        }
+    }
+
+    invariant coherent_events: size() == tail() - head();
+
+    control {
+        v = induction;
+        check;
+        print_results;
+    }
+}
+
+
+module Client {
+    type * = Common.*;
+    type state_t = enum { INIT, SENDPING, WAITPONG};
+
+    var state : state_t;
+    var entry : boolean;
+    
+    sharedvar queue : event_q;
+
+    instance common : Common (event_queue : (queue));
+
+    procedure [inline] pop_event() 
+        returns (e: event_t)
+        modifies queue;  
+    {
+        e = queue.events[queue.head];
+
+        queue.head = queue.head  + 1;
+        queue.size = queue.size - 1;
+    }
+
+    procedure [inline] state_init(e: event_t)
+        modifies state, entry, common;
+        requires e.target == Common.client_id;
+        requires !entry ==> e.signal == SUCCESS;
+    {
+        if (entry) {
+            var e2 : event_t;
+
+            entry = false;
+
+            e2.signal = SUCCESS;
+            e2.source = e.target;
+            e2.target = e.target;
+
+            call () = common.push_event(e2);
+        } else {
+            entry = true;
+            state = SENDPING;
+        }
+    }
+
+    procedure [inline] state_send_ping(e: event_t) 
+        modifies state, entry, common;
+        requires e.target == Common.client_id;
+        requires !entry ==> e.signal == SUCCESS;
+    {
+        if (entry) {
+            var success : event_t;
+            var ping    : event_t;
+
+            entry = false;
+
+            success.signal = SUCCESS;
+            success.source = e.target;
+            success.target = e.target;
+            call () = common.push_event(success);
+
+            ping.signal = PING;
+            ping.source = e.target;
+            ping.target = common.server_id;
+            call () = common.push_event(ping);
+        } else {
+            entry = true;
+            state = WAITPONG;
+        }
+    }
+
+    procedure [inline] state_wait_pong(e: event_t) 
+        modifies state, entry, common;
+        requires e.target == Common.client_id;
+        requires e.signal == PONG;
+    {
+        entry = true;
+        state = SENDPING;
+    }
+
+    init {
+        call () = common.reset_events();
+        state = INIT;
+        entry = true;
+    }
+
+    next {
+        var e : event_t;
+        e.target = Common.client_id;
+        case 
+        (state == INIT && entry) : {
+            call () = state_init(e);
+        }
+        (state == SENDPING && entry) : {
+            call () = state_send_ping(e);
+        }
+        esac
+    }
+
+    invariant coherent_events: queue.size == queue.tail - queue.head;
+
+    control {
+        v = induction;
+        check;
+        print_results;
+    }
+}
+
+module Server {
+    type * = Common.*;
+    type state_t = enum {SENDPONG, WAITPING}; 
+
+    var state : state_t;
+    var entry : boolean;
+    
+    sharedvar queue : event_q;
+
+    instance common : Common (event_queue : (queue));
+
+    procedure [inline] pop_event() 
+        returns (e: event_t)
+        modifies queue;  
+    {
+        e = queue.events[queue.head];
+
+        queue.head = queue.head  + 1;
+        queue.size = queue.size - 1;
+    }
+
+    procedure [inline] state_send_pong(e: event_t) 
+        modifies state, entry, common;
+        requires e.target == Common.server_id;
+        requires !entry ==> e.signal == SUCCESS;
+    {
+        if (entry) {
+            var success : event_t;
+            var pong    : event_t;
+
+            entry = false;
+
+            success.signal = SUCCESS;
+            success.source = e.target;
+            success.target = e.target;
+            call () = common.push_event(success);
+
+            pong.signal = PONG;
+            pong.source = e.target;
+            pong.target = common.client_id;
+            call () = common.push_event(pong);
+        } else {
+            entry = true;
+            state = WAITPING;
+        }
+    }
+
+    procedure [inline] state_wait_ping(e: event_t) 
+        modifies state, entry, common;
+        requires e.target == Common.server_id;
+        requires e.signal == PING;
+    {
+        entry = true;
+        state = SENDPONG;
+    }
+
+    init {
+        call () = common.reset_events();
+        state = WAITPING;
+        entry = true;
+    }
+
+    next {
+        var e : event_t;
+        e.target = Common.server_id;
+        case 
+        (state == SENDPONG && entry) : {
+            call () = state_send_pong(e);
+        }
+        esac
+    }
+
+    invariant coherent_events: queue.size == queue.tail - queue.head;
+
+    control {
+        v = induction;
+        check;
+        print_results;
+    }
+}
+
+
+module main {
+
+    type * = Common.*;
+    type client_state_t = Client.state_t;
+    type server_state_t = Server.state_t;
+    
+    var client_queue : event_q;
+    var server_queue : event_q;
+
+    instance client : Client (queue : (client_queue));
+    instance server : Server (queue : (server_queue));
+
+    procedure [inline] communicate() 
+        modifies client, server;
+    {
+        if (client_queue.size > 0) {
+            var e  : event_t;
+            call (e) = client.pop_event();
+            // case switch on every state of the entire system
+            case 
+            (e.target == Common.client_id) : {
+                case 
+                (client.state == INIT) : {
+                    call () = client.state_init(e);
+                }
+                (client.state == WAITPONG) : {
+                    call () = client.state_wait_pong(e);
+                }
+                (client.state == SENDPING) : {
+                    call () = client.state_send_ping(e);
+                }
+                esac
+            } 
+            (e.target == Common.server_id) : {
+                case 
+                (server.state == WAITPING) : {
+                    call () = server.state_wait_ping(e);
+                }
+                (server.state == SENDPONG) : {
+                    call () = server.state_send_pong(e);
+                }
+                esac
+            }
+            esac
+        }
+
+        if (server_queue.size > 0) {
+            var e  : event_t;
+            call (e) = server.pop_event();
+            // case switch on every state of the entire system
+            case 
+            (e.target == Common.client_id) : {
+                case 
+                (client.state == INIT) : {
+                    call () = client.state_init(e);
+                }
+                (client.state == WAITPONG) : {
+                    call () = client.state_wait_pong(e);
+                }
+                (client.state == SENDPING) : {
+                    call () = client.state_send_ping(e);
+                }
+                esac
+            } 
+            (e.target == Common.server_id) : {
+                case 
+                (server.state == WAITPING) : {
+                    call () = server.state_wait_ping(e);
+                }
+                (server.state == SENDPONG) : {
+                    call () = server.state_send_pong(e);
+                }
+                esac
+            }
+            esac
+        }
+    }
+
+    next {
+        if (*) {
+            call () = communicate();
+        } else {
+            next(client);
+            next(server);
+        }
+    }
+
+    invariant coherent_client_events: client_queue.size >= 0 && client_queue.size == client_queue.tail - client_queue.head;
+    invariant coherent_server_events: server_queue.size >= 0 && server_queue.size == server_queue.tail - server_queue.head;
+
+    invariant small_queues: client_queue.size <= 2 && server_queue.size <= 2;
+
+    invariant ping_destined_for_server: 
+        forall (x : event_id) :: (x >= client_queue.head && x < client_queue.tail) ==> 
+            (client_queue.events[x].signal == PING ==> client_queue.events[x].target == Common.server_id);
+
+    invariant pong_destined_for_client: 
+        forall (x : event_id) :: (x >= server_queue.head && x < server_queue.tail) ==> 
+            (server_queue.events[x].signal == PONG ==> server_queue.events[x].target == Common.client_id);
+
+    invariant client_doesnt_send_pongs: 
+        forall (x : event_id) :: (x >= client_queue.head && x < client_queue.tail) ==> 
+            (client_queue.events[x].signal != PONG);
+
+    invariant server_doesnt_send_pings: 
+        forall (x : event_id) :: (x >= server_queue.head && x < server_queue.tail) ==> 
+            (server_queue.events[x].signal != PING);
+
+    invariant server_success_destined_for_self_not_entry: 
+        forall (x : event_id) :: (x >= server_queue.head && x < server_queue.tail) ==> 
+            (server_queue.events[x].signal == SUCCESS ==> server_queue.events[x].target == Common.server_id && server_queue.events[x].target == server_queue.events[x].source && !server.entry);
+
+    invariant client_success_destined_for_self_not_entry: 
+        forall (x : event_id) :: (x >= client_queue.head && x < client_queue.tail) ==> 
+            (client_queue.events[x].signal == SUCCESS ==> client_queue.events[x].target == Common.client_id && client_queue.events[x].target == client_queue.events[x].source && !client.entry);
+
+    invariant client_state_and_queue_size:
+        (client.state == INIT && client.entry ==> client_queue.size == 0) &&
+        (client.state == INIT && !client.entry ==> client_queue.size <= 1) &&
+        (client.state == SENDPING && client.entry ==> client_queue.size == 0) &&
+        (client.state == SENDPING && !client.entry ==> client_queue.size <= 2) &&
+        (client.state == WAITPONG ==> client_queue.size <= 1);
+
+    invariant server_state_and_queue_size:
+        (server.state == SENDPONG && server.entry ==> server_queue.size == 0) &&
+        (server.state == SENDPONG && !server.entry ==> server_queue.size <= 2) &&
+        (server.state == WAITPING ==> server_queue.size <= 1);
+
+    invariant client_events:
+        client_queue.size == 2 ==> client_queue.events[client_queue.head].signal == SUCCESS && client_queue.events[client_queue.head + 1].signal == PING;
+
+    invariant server_events:
+        server_queue.size == 2 ==> server_queue.events[server_queue.head].signal == SUCCESS && server_queue.events[server_queue.head + 1].signal == PONG;
+
+    invariant only_single_succes_on_init:
+        (client_queue.size == 1 ==> (client_queue.events[client_queue.head].signal != SUCCESS || client.state == INIT)) &&
+        (client_queue.size == 1 && client.state == INIT ==> client_queue.events[client_queue.head].signal == SUCCESS);
+
+    invariant never_single_succes_on_init:
+        server_queue.size == 1 ==> server_queue.events[server_queue.head].signal != SUCCESS;
+
+    // if both machines are waitng, then there is only one event, and it is going to the right place
+    invariant wait_wait_correct: 
+        client.state == WAITPONG && server.state == WAITPING ==> 
+            ((client_queue.size == 1 && client_queue.events[client_queue.head].signal == PING && server_queue.size == 0) 
+            ||
+            (server_queue.size == 1 && server_queue.events[server_queue.head].signal == PONG && client_queue.size == 0));
+
+    invariant cant_both_send: 
+        client.state != SENDPING || 
+        server.state != SENDPONG;
+
+    // if the client is in init, then the server is in WAITPING
+    invariant client_init_means_server_waitping: 
+        client.state == INIT ==> server.state == WAITPING;
+
+
+
+    // FROM GLOBAL
+    // if the client is in init entry, then the server doesn't exist and events are empty
+    invariant client_init_entry_no_server: 
+        client.state == INIT && client.entry ==> (client_queue.size == 0 && server_queue.size == 0);
+
+    // if the client is in init but not entry, then the server exists and success is the only event
+    invariant client_init_success: 
+        client.state == INIT && !client.entry ==>
+            client_queue.size == 1 && client_queue.events[client_queue.head].signal == SUCCESS;
+
+    // if the client is in SENDPING entry then there are no events 
+    invariant client_send_ping_entry_no_events: 
+        client.state == SENDPING && client.entry ==> (client_queue.size == 0 && server_queue.size == 0);
+
+    // if the client is in SENDPING not entry and the server is in WAITPING, then there are two events: success and ping 
+    invariant client_send_ping_not_entry: 
+        (client.state == SENDPING && !client.entry && server.state == WAITPING) ==>
+            ((client_queue.size + server_queue.size) == 2 && 
+            client_queue.events[client_queue.head].signal == SUCCESS &&
+            client_queue.events[client_queue.head + 1].signal == PING);
+
+    // if the client is waiting for a pong, then there is a single pong event or a success before it
+    invariant client_wait_pong_events: 
+        client.state == WAITPONG ==> server_queue.size == 2 ==>
+            (exists (x : event_id) :: (x >= server_queue.head && x < server_queue.tail && server_queue.events[x].signal == PONG)) && 
+            (exists (x : event_id) :: (x >= server_queue.head && x < server_queue.tail && server_queue.events[x].signal == SUCCESS));
+
+    // if the server is in SENDPONG entry then there are no events 
+    invariant server_send_pong_entry_no_events: 
+        server.state == SENDPONG && server.entry ==> 
+            (client_queue.size == 0 && server_queue.size == 0);
+
+    // if the server is in SENDPONG not entry and the client is in WAITPONG, then there are two events: success and pong 
+    invariant server_send_pong_not_entry:
+        (server.state == SENDPONG && !server.entry && client.state == WAITPONG) ==>
+            (server_queue.size == 2 && client_queue.size == 0 &&
+            server_queue.events[server_queue.head].signal == SUCCESS &&
+            server_queue.events[server_queue.head + 1].signal == PONG);
+
+    // if the server is waiting for a ping, then there is a single ping event or a success before it
+    invariant server_wait_ping_events: 
+        server.state == WAITPING ==> client_queue.size == 2 ==>
+            (exists (x : event_id) :: (x >= client_queue.head && x < client_queue.tail && client_queue.events[x].signal == PING)) && 
+            (exists (x : event_id) :: (x >= client_queue.head && x < client_queue.tail && client_queue.events[x].signal == SUCCESS));
+
+    control {
+        v = induction;
+        check;
+        print_results;
+        v.print_cex(
+             client_queue.size,
+             client_queue.events[client_queue.head].signal,
+             client.state,
+             client.entry,
+             server_queue.size,
+             server.state,
+             server.entry
+        );
+    }
+}
