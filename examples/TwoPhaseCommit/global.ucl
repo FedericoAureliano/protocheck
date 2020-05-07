@@ -1,0 +1,329 @@
+module main {
+    type machine_id = integer;
+
+    const coordinator_id : machine_id;
+    axiom coordinator_id == 0;
+
+    const participant_count : machine_id;
+    axiom participant_count == 2; // Just to make it quicker
+
+    // Events
+    type event_id   = integer;
+    type signal_t = enum { EWRITETRANSACTION, EPREPARESUCCESS, EPREPAREFAIL, EPREPARE, EGLOBALCOMMIT, EGLOBALABORT, ACT };
+    type event_t  = record {
+        signal: signal_t,
+        source: machine_id,
+        target: machine_id,
+        data: integer
+    };
+
+    // Participant
+    type participant_state_t = enum { WAITFORREQUESTS};
+    type participant_t = record {
+        state : participant_state_t,
+        entry: boolean,
+        writes: integer,
+        memory: [integer]integer
+    };
+
+    // Coordinator
+    type coordinator_state_t = enum { WAITFORTRANSACTIONS, WAITFORPREPARERESPONSES};
+    type coordinator_t = record {
+        state : coordinator_state_t,
+        entry: boolean,
+        participants: [machine_id]participant_t,
+        countPrepareResponses: integer
+    };
+
+    // output queue of the queue
+    type queue_t = record { 
+        events  : [event_id]event_t,
+        head  : event_id, 
+        tail  : event_id,
+        size  : event_id
+    };
+
+    define head    () : event_id    = queue.head;
+    define tail    () : event_id    = queue.tail;
+    define count   () : event_id    = queue.size;
+    define signal (id : event_id)   : signal_t   = queue.events[id].signal;
+    define target (id : event_id)   : machine_id = queue.events[id].target;
+    define valid  (id : event_id)   : boolean    = id >= head() && id < tail();
+
+    // procedures for event queues
+    procedure [inline] push_event(e: event_t) 
+        modifies queue;
+    {
+        queue.events = queue.events[tail() -> e];
+        queue.tail = tail()  + 1;
+        queue.size = count() + 1;
+    }
+
+    procedure [inline] pop_event() 
+        returns (e: event_t)
+        modifies queue;  
+    {
+        e = queue.events[head()];
+
+        queue.head = head()  + 1;
+        queue.size = count() - 1;
+    }
+
+    procedure [inline] coordinator_WaitForTransactions(e: event_t)
+        modifies coordinator, queue;
+        requires coordinator_id == 0;
+        requires participant_count > 1;
+
+        requires e.target == coordinator_id;
+        requires e.signal == EWRITETRANSACTION;
+        requires coordinator.state == WAITFORTRANSACTIONS;
+    {
+        if (e.signal == EWRITETRANSACTION) { 
+            var a : event_t;
+            var x : integer;
+            a.target = coordinator_id;
+            a.source = coordinator_id; 
+            a.signal = ACT;
+            call () = push_event(a);
+            x = 1;
+            while (x <= participant_count)
+                invariant x >= 1;
+                invariant queue.size >= 0 && queue.size == queue.tail - queue.head;
+            {
+                var w : event_t;
+                w.target = x;
+                w.source = coordinator_id; 
+                w.signal = EPREPARE;
+                w.data = e.data;
+                call () = push_event(w);
+                x = x + 1;
+            }
+            coordinator.entry = true;
+            coordinator.state = WAITFORPREPARERESPONSES;
+        }
+    }
+
+    procedure [inline] coordinator_WaitForPrepareResponses(e: event_t)
+        modifies coordinator, queue;
+        requires coordinator_id == 0;
+        requires participant_count > 1;
+
+        requires e.target == coordinator_id;
+        requires e.signal == EPREPARESUCCESS || e.signal == EPREPAREFAIL || e.signal == ACT;
+        requires e.signal == ACT ==> coordinator.entry;
+        requires coordinator.state == WAITFORPREPARERESPONSES;
+    {
+        case 
+        (e.signal == ACT) : {
+            coordinator.countPrepareResponses = 0;
+            coordinator.entry = false;
+        } 
+        (e.signal == EPREPARESUCCESS) : {
+            coordinator.countPrepareResponses = coordinator.countPrepareResponses + 1;
+            if (coordinator.countPrepareResponses == participant_count) {
+                var x : integer;
+                x = 1;
+                while (x <= participant_count)
+                    invariant x >= 1;
+                    invariant queue.size >= 0 && queue.size == queue.tail - queue.head;
+                {
+                    var w : event_t;
+                    w.target = x;
+                    w.source = coordinator_id; 
+                    w.signal = EGLOBALCOMMIT;
+                    call () = push_event(w);
+                    x = x + 1;
+                }
+                coordinator.entry = true;
+                coordinator.state = WAITFORTRANSACTIONS;
+            }
+        }
+        (e.signal == EPREPAREFAIL) : {
+            var x : integer;
+            x = 1;
+            while (x <= participant_count)
+                invariant x >= 1;
+                invariant queue.size >= 0 && queue.size == queue.tail - queue.head;
+            {
+                var w : event_t;
+                w.target = x;
+                w.source = coordinator_id; 
+                w.signal = EGLOBALABORT;
+                call () = push_event(w);
+                x = x + 1;
+            }
+            coordinator.entry = true;
+            coordinator.state = WAITFORTRANSACTIONS;
+        }
+        (true) : {
+            assert false;
+        }
+        esac
+    }
+
+    procedure [inline] participant_WaitForRequests(e: event_t)
+        modifies coordinator, queue;
+        requires coordinator_id == 0;
+        requires participant_count > 1;
+
+
+        requires e.signal == EPREPARE || e.signal == EGLOBALCOMMIT || e.signal == EGLOBALABORT;
+
+        requires e.target > coordinator_id && e.target <= participant_count;
+        requires coordinator.participants[e.target].state == WAITFORREQUESTS;
+    {
+        case 
+        (e.signal == EPREPARE) : {
+            var w : event_t;
+            w.target = coordinator_id;
+            w.source = e.target; 
+            if (*) {
+                var p : participant_t;
+                p = coordinator.participants[e.target];
+                p.memory = p.memory[p.writes -> e.data];
+                coordinator.participants = coordinator.participants[e.target -> p];
+                w.signal = EPREPARESUCCESS;
+                call () = push_event(w); 
+            } else {
+                w.signal = EPREPAREFAIL;
+                call () = push_event(w);  
+            }
+        }
+        (e.signal == EGLOBALCOMMIT) : {
+            var p : participant_t;
+            p = coordinator.participants[e.target];
+            p.writes = p.writes + 1;
+            coordinator.participants = coordinator.participants[e.target -> p];
+        }
+        (e.signal == EGLOBALABORT) : {
+            
+        }
+        (true) : {
+            assert false;
+        }
+        esac 
+    }
+
+    procedure [inline] communicate() 
+        modifies coordinator, queue;
+        requires coordinator_id == 0;
+        requires participant_count > 1;
+        requires queue.size > 0;
+    {
+        var e  : event_t;
+        call (e) = pop_event();
+
+        // case switch on every state of the entire system
+        case 
+        (e.target == coordinator_id) : {
+            case 
+            (coordinator.state == WAITFORTRANSACTIONS) : {
+                call () = coordinator_WaitForTransactions(e);
+            }
+            (coordinator.state == WAITFORPREPARERESPONSES) : {
+                call () = coordinator_WaitForPrepareResponses(e);
+            }
+            (true) : {
+                assert false;
+            }
+            esac
+        } 
+        (e.target > coordinator_id) : {
+            case 
+            (coordinator.participants[e.target].state == WAITFORREQUESTS) : {
+                call () = participant_WaitForRequests(e);
+            }
+            (true) : {
+                assert false;
+            }
+            esac
+        }
+        (true) : {
+            assert false;
+        }
+        esac
+    }
+
+    var queue: queue_t;
+    var coordinator: coordinator_t;
+
+    init {
+        coordinator.state = WAITFORTRANSACTIONS;
+        coordinator.entry = true;
+        queue.size = 0;
+        queue.head = 0;
+        queue.tail = 0;
+        assume (forall (i : integer) :: ((i >= 1 && i <= participant_count) 
+            ==> coordinator.participants[i].writes == 0));
+    }
+
+    next {
+        if (queue.size == 0) {
+            var e : event_t;
+            assume e.target == coordinator_id;
+            assume e.signal == EWRITETRANSACTION;
+            call () = push_event(e);
+        } else {
+            assume queue.size > 0;
+            call () = communicate();
+        }
+    }
+
+    invariant same_num_writes : ((queue.events[queue.head].signal == EWRITETRANSACTION)
+        ==> (forall (i : integer, j : integer) :: 
+            ((i >= 1 && i <= participant_count && j >= 1 && j <= participant_count)
+                ==> (coordinator.participants[i].writes == coordinator.participants[j].writes))));
+
+    invariant new_transaction_when_done: queue.size > 0 ==> (queue.events[queue.head].signal == EWRITETRANSACTION) ==> queue.size == 1;
+    
+    invariant only_new_transation_when_done: queue.size > 0 ==>
+        (queue.events[queue.head].target == coordinator_id && coordinator.state == WAITFORTRANSACTIONS) 
+            ==> queue.events[queue.head].signal == EWRITETRANSACTION;
+
+    invariant coherent_events: queue.size >= 0 && queue.size == queue.tail - queue.head;
+
+    invariant max_events: queue.size <= 2*participant_count;
+
+    invariant real_target: (forall (i : integer) :: (i >= queue.head && i < queue.tail) 
+        ==> (queue.events[i].target >= 0 && queue.events[i].target <= participant_count));
+
+    invariant only_one_act: queue.size > 0 ==>
+        queue.events[queue.head].signal == ACT ==>
+            queue.events[queue.head].target == coordinator_id && coordinator.state == WAITFORPREPARERESPONSES && coordinator.entry;
+
+    invariant wait_for_transactions_three_choices: queue.size > 0 ==>
+        (queue.events[queue.head].target == coordinator_id && coordinator.state == WAITFORPREPARERESPONSES) 
+            ==> queue.events[queue.head].signal == EPREPARESUCCESS || queue.events[queue.head].signal == EPREPAREFAIL || queue.events[queue.head].signal == ACT;
+
+    invariant wait_for_requests_three_choices: queue.size > 0 ==>
+        (queue.events[queue.head].target > coordinator_id) 
+            ==> queue.events[queue.head].signal == EPREPARE || queue.events[queue.head].signal == EGLOBALCOMMIT || queue.events[queue.head].signal == EGLOBALABORT;
+
+
+    control {
+        // verify(participant_WaitForRequests);
+        // verify(coordinator_WaitForPrepareResponses);
+        // verify(coordinator_WaitForTransactions);
+        // v = verify(communicate);
+        v = induction;
+        check;
+        print_results;
+        v.print_cex(
+            participant_count,
+            queue.size,
+            queue.head,
+            queue.tail,
+            queue.events[queue.head].source,
+            queue.events[queue.head].target,
+            queue.events[queue.head].signal,
+            queue.events[queue.tail - 1].source,
+            queue.events[queue.tail - 1].target,
+            queue.events[queue.tail - 1].signal,
+
+            coordinator.state,
+            coordinator.participants[1].writes,
+            coordinator.participants[2].writes
+        );
+
+    }
+}
