@@ -133,6 +133,8 @@ module Coordinator {
         if (flag_c) {
             var w_i : event_t;
             var w_j : event_t;
+            // will wait for participants
+            assume(!to_i_flag && !to_j_flag);
             w_i.target = Common.participant_i;
             w_i.source = Common.coordinator_id; 
             w_i.signal = EPREPARE;
@@ -180,7 +182,6 @@ module Coordinator {
                 w_i.target = Common.participant_i;
                 w_i.source = Common.coordinator_id; 
                 w_i.signal = EGLOBALABORT;
-                // assert(false);
                 to_i = w_i;
                 to_i_flag = true; 
                 w_j.target = Common.participant_j;
@@ -236,6 +237,8 @@ module Coordinator {
         countPrepareResponses = 0;
         to_i_flag = false;
         to_j_flag = false;
+        from_i_flag = false;
+        from_j_flag = false;
     }
 
     next {
@@ -295,23 +298,45 @@ module Coordinator {
     invariant count_range : countPrepareResponses >= 0 && countPrepareResponses <= Common.participant_count;
     invariant nothing_to_wait_for : countPrepareResponses == Common.participant_count ==> (state == WAITFORTRANSACTIONS);
 
-    invariant waiting_for_trans_means_no_outstanding_commit: state == WAITFORTRANSACTIONS ==> 
-        (!to_i_flag || to_i.signal != EGLOBALCOMMIT) && (!to_j_flag || to_j.signal != EGLOBALCOMMIT);
+    invariant not_i_commit_and_j_abort: (to_i_flag && to_i.signal == EGLOBALCOMMIT) ==> (to_j_flag ==> to_j.signal != EGLOBALABORT);
+    invariant not_j_commit_and_i_abort: (to_j_flag && to_j.signal == EGLOBALCOMMIT) ==> (to_i_flag ==> to_i.signal != EGLOBALABORT);
+
+    invariant below_count_means_i_no_commit: countPrepareResponses < Common.participant_count ==> (!to_i_flag || to_i.signal != EGLOBALCOMMIT);
+    invariant below_count_means_j_no_commit: countPrepareResponses < Common.participant_count ==> (!to_j_flag || to_j.signal != EGLOBALCOMMIT);
+
+    invariant i_abort_means_equal: (to_i_flag && to_i.signal == EGLOBALABORT) ==> i.writes == j.writes;
+    invariant j_abort_means_equal: (to_j_flag && to_j.signal == EGLOBALABORT) ==> i.writes == j.writes;
+
+    invariant full_count_means_equal: countPrepareResponses == Common.participant_count ==> 
+        (i.writes == j.writes) || 
+        (i.writes < j.writes && to_i_flag && to_i.signal == EGLOBALCOMMIT) ||
+        (j.writes < i.writes && to_j_flag && to_j.signal == EGLOBALCOMMIT) ;
+
+    invariant waiting_means_no_from: state == WAITFORTRANSACTIONS ==> (!from_i_flag && !from_j_flag);
 
     control {
         v1 = verify(coordinator_WaitForTransactions);
         v2 = verify(coordinator_WaitForPrepareResponses);
-        v3 = unroll(20);
+        v3 = induction;
         check;
         print_results;
         v1.print_cex();
         v2.print_cex();
         v3.print_cex(
             state,
+            countPrepareResponses,
+            in_c,
+            flag_c,
+            
             to_i_flag,
             to_i.signal,
             to_j_flag,
             to_j.signal,
+            
+            from_i_flag,
+            from_i.signal,
+            from_j_flag,
+            from_j.signal,
 
             i.writes,
             j.writes
