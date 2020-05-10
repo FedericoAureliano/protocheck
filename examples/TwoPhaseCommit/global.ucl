@@ -5,7 +5,7 @@ module main {
     axiom coordinator_id == 0;
 
     const participant_count : machine_id;
-    axiom participant_count == 2; // Just to make it quicker
+    axiom participant_count >= 1; // Just to make it quicker
 
     // Events
     type event_id   = integer;
@@ -89,6 +89,8 @@ module main {
             while (x <= participant_count)
                 invariant x >= 1;
                 invariant queue.size >= 0 && queue.size == queue.tail - queue.head;
+                invariant (forall (i : integer) :: (i >= queue.head && i < queue.tail) 
+                    ==> (queue.events[i].target >= 0 && queue.events[i].target <= participant_count));
             {
                 var w : event_t;
                 w.target = x;
@@ -126,6 +128,8 @@ module main {
                 while (x <= participant_count)
                     invariant x >= 1;
                     invariant queue.size >= 0 && queue.size == queue.tail - queue.head;
+                    invariant (forall (i : integer) :: (i >= queue.head && i < queue.tail) 
+                        ==> (queue.events[i].target >= 0 && queue.events[i].target <= participant_count));
                 {
                     var w : event_t;
                     w.target = x;
@@ -144,6 +148,8 @@ module main {
             while (x <= participant_count)
                 invariant x >= 1;
                 invariant queue.size >= 0 && queue.size == queue.tail - queue.head;
+                invariant (forall (i : integer) :: (i >= queue.head && i < queue.tail) 
+                    ==> (queue.events[i].target >= 0 && queue.events[i].target <= participant_count));
             {
                 var w : event_t;
                 w.target = x;
@@ -269,13 +275,16 @@ module main {
         }
     }
 
-    invariant same_num_writes : ((queue.events[queue.head].signal == EWRITETRANSACTION)
+    invariant same_num_writes : (queue.size > 0 && (queue.events[queue.head].signal == EWRITETRANSACTION)
         ==> (forall (i : integer, j : integer) :: 
             ((i >= 1 && i <= participant_count && j >= 1 && j <= participant_count)
                 ==> (coordinator.participants[i].writes == coordinator.participants[j].writes))));
 
     invariant new_transaction_when_done: queue.size > 0 ==> (queue.events[queue.head].signal == EWRITETRANSACTION) ==> queue.size == 1;
     
+    invariant never_new_transaction_with_others: queue.size > 1 ==> (forall (i : integer) :: (i >= queue.head && i < queue.tail) 
+        ==> (queue.events[queue.head].signal != EWRITETRANSACTION));
+
     invariant only_new_transation_when_done: queue.size > 0 ==>
         (queue.events[queue.head].target == coordinator_id && coordinator.state == WAITFORTRANSACTIONS) 
             ==> queue.events[queue.head].signal == EWRITETRANSACTION;
@@ -305,7 +314,7 @@ module main {
         // verify(coordinator_WaitForPrepareResponses);
         // verify(coordinator_WaitForTransactions);
         // v = verify(communicate);
-        v = induction;
+        v = unroll(3);
         check;
         print_results;
         v.print_cex(

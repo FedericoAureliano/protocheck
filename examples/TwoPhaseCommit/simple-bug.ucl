@@ -1,0 +1,320 @@
+module Common {
+    type machine_id = integer;
+    type event_id   = integer;
+    type signal_t   = enum { 
+        EWRITETRANSACTION, 
+        EPREPARESUCCESS, 
+        EPREPAREFAIL, 
+        EPREPARE, 
+        EGLOBALCOMMIT, 
+        EGLOBALABORT
+    };
+    type event_t  = record {
+        signal: signal_t,
+        source: machine_id,
+        target: machine_id,
+        data  : integer
+    };
+
+    const coordinator_id : machine_id;
+    axiom coordinator_id == 0;
+    const participant_count : machine_id;
+    axiom participant_count == 2;
+    const participant_i : machine_id;
+    const participant_j : machine_id;
+    axiom participant_i != participant_j;
+    axiom participant_i > 0 && participant_i <= 2;
+    axiom participant_j > 0 && participant_j <= 2;
+}
+
+
+module Participant {
+    type * = Common.*;
+    type state_t = enum {
+        WAITFORREQUESTS
+    };
+
+    var state : state_t;
+    var writes: integer;
+    var memory: [integer]integer;
+
+    input  inp_flag  : boolean;
+    output outp_flag : boolean;
+
+    input  inp  : event_t;
+    output outp : event_t;
+
+    procedure [inline] participant_WaitForRequests()
+        modifies state, writes, memory, outp, outp_flag;
+    {
+        if (inp_flag) {
+            case 
+            (inp.signal == EPREPARE) : {
+                var w : event_t;
+                w.target = Common.coordinator_id;
+                w.source = inp.target; 
+                if (*) {
+                    memory = memory[writes -> inp.data];
+                    w.signal = EPREPARESUCCESS;
+                    outp = w;
+                } else {
+                    w.signal = EPREPAREFAIL;
+                    outp = w;
+                }
+            }
+            (inp.signal == EGLOBALCOMMIT) : {
+                writes = writes + 1;
+            }
+            (inp.signal == EGLOBALABORT) : {
+            }
+            esac 
+        }
+    }
+
+    init {
+        state = WAITFORREQUESTS;
+        writes = 0;
+    }
+
+    next {
+        if (state == WAITFORREQUESTS) {
+            call () = participant_WaitForRequests();
+        }
+    }
+
+    control {
+        v = verify(participant_WaitForRequests);
+        check;
+        print_results;
+        v.print_cex;
+    }
+}
+
+module Coordinator {
+    type * = Common.*;
+    type state_t = enum {
+        WAITFORTRANSACTIONS, 
+        WAITFORPREPARERESPONSES
+    };
+
+    input  in_c    : event_t;
+    input  flag_c : boolean;
+
+    var  from_i      : event_t;
+    var  from_i_flag : boolean;
+    var  to_i        : event_t;
+    var  to_i_flag   : boolean;
+
+    var  from_j      : event_t;
+    var  from_j_flag : boolean;
+    var  to_j        : event_t;
+    var  to_j_flag   : boolean;
+
+    var state : state_t;
+    var countPrepareResponses : integer;
+
+    instance i : Participant (
+        inp_flag : (to_i_flag),
+        inp : (to_i),
+        outp_flag : (from_i_flag),
+        outp : (from_i)
+    );
+
+    instance j : Participant (
+        inp_flag : (to_j_flag),
+        inp : (to_j),
+        outp_flag : (from_j_flag),
+        outp : (from_j)
+    );
+
+    procedure [inline] coordinator_WaitForTransactions()
+        modifies state, to_i_flag, to_j_flag, to_i, to_j, countPrepareResponses;
+    {
+        if (flag_c) {
+            var w_i : event_t;
+            var w_j : event_t;
+            w_i.target = Common.participant_i;
+            w_i.source = Common.coordinator_id; 
+            w_i.signal = EPREPARE;
+            w_i.data = in_c.data;
+            to_i = w_i;
+            w_j.target = Common.participant_j;
+            w_j.source = Common.coordinator_id; 
+            w_j.signal = EPREPARE;
+            w_j.data = in_c.data;
+            to_j = w_j;
+            countPrepareResponses = 0;
+            state = WAITFORPREPARERESPONSES;
+            to_i_flag = true; 
+            to_j_flag = true;
+        }
+    }
+
+    procedure [inline] coordinator_WaitForPrepareResponses( choice : integer)
+        modifies state, to_i_flag, to_j_flag, to_i, to_j, countPrepareResponses;
+    {
+        case 
+        (choice == 1) : {
+            case 
+            (from_i.signal == EPREPARESUCCESS) : {
+                countPrepareResponses = countPrepareResponses + 1;
+                if (countPrepareResponses == Common.participant_count) {
+                    var w_i : event_t;
+                    var w_j : event_t;
+                    w_i.target = Common.participant_i;
+                    w_i.source = Common.coordinator_id; 
+                    w_i.signal = EGLOBALCOMMIT;
+                    to_i = w_i;
+                    to_i_flag = true; 
+                    w_j.target = Common.participant_j;
+                    w_j.source = Common.coordinator_id; 
+                    w_j.signal = EGLOBALCOMMIT;
+                    to_j = w_j;
+                    to_j_flag = true;
+                    state = WAITFORTRANSACTIONS;
+                }
+            }
+            (from_i.signal == EPREPAREFAIL) : {
+                var w_i : event_t;
+                var w_j : event_t;
+                w_i.target = Common.participant_i;
+                w_i.source = Common.coordinator_id; 
+                w_i.signal = EGLOBALABORT;
+                // assert(false);
+                to_i = w_i;
+                to_i_flag = true; 
+                w_j.target = Common.participant_j;
+                w_j.source = Common.coordinator_id; 
+                w_j.signal = EGLOBALABORT;
+                to_j = w_j;
+                to_j_flag = true;
+                state = WAITFORTRANSACTIONS;
+            }
+            esac
+        }
+        (choice == 2) : {
+            case (from_j.signal == EPREPARESUCCESS) : {
+                countPrepareResponses = countPrepareResponses + 1;
+                if (countPrepareResponses == Common.participant_count) {
+                    var w_i : event_t;
+                    var w_j : event_t;
+                    w_i.target = Common.participant_i;
+                    w_i.source = Common.coordinator_id; 
+                    w_i.signal = EGLOBALCOMMIT;
+                    to_i = w_i;
+                    to_i_flag = true; 
+                    w_j.target = Common.participant_j;
+                    w_j.source = Common.coordinator_id; 
+                    w_j.signal = EGLOBALCOMMIT;
+                    to_j = w_j;
+                    to_j_flag = true;
+                    state = WAITFORTRANSACTIONS;
+                }
+            }
+            (from_j.signal == EPREPAREFAIL) : {
+                var w_i : event_t;
+                var w_j : event_t;
+                w_i.target = Common.participant_i;
+                w_i.source = Common.coordinator_id; 
+                w_i.signal = EGLOBALABORT;
+                to_i = w_i;
+                to_i_flag = true; 
+                w_j.target = Common.participant_j;
+                w_j.source = Common.coordinator_id; 
+                w_j.signal = EGLOBALABORT;
+                to_j = w_j;
+                to_j_flag = true;
+                state = WAITFORTRANSACTIONS;
+            }
+            esac
+        }
+        esac
+    }
+
+    init {
+        state = WAITFORTRANSACTIONS;
+        countPrepareResponses = 0;
+        to_i_flag = false;
+        to_j_flag = false;
+    }
+
+    next {
+        if (*) {
+            case 
+            (state == WAITFORTRANSACTIONS) : {
+                call () = coordinator_WaitForTransactions();
+            } 
+            (state == WAITFORPREPARERESPONSES) : {
+                var choice : integer;
+                case 
+                (from_i_flag && from_j_flag) : {
+                    if (*) {
+                        choice = 1;
+                    } else {
+                        choice = 2;
+                    }
+                    from_i_flag' = false;
+                    from_j_flag' = false;
+                } 
+                (from_i_flag) : {
+                    choice = 1;
+                    from_i_flag' = false;
+                } 
+                (from_j_flag) : {
+                    choice = 2;
+                    from_j_flag' = false;
+                }
+                (true) : {
+                    choice = 3;
+                }
+                esac
+                call () = coordinator_WaitForPrepareResponses(choice);
+            }
+            esac
+        } else {
+            if (*) {
+                next(i);
+                to_i_flag' = false;
+            }
+            if (*) {
+                next(j);
+                to_j_flag' = false;
+            }
+        }
+    }
+
+    invariant same_writes: (state == WAITFORTRANSACTIONS && !to_i_flag && !to_j_flag) ==> i.writes == j.writes;
+
+    invariant close_invariants: i.writes == j.writes || i.writes == j.writes + 1 || i.writes + 1 == j.writes;
+    invariant i_behind_means_i_commit: i.writes < j.writes ==> (to_i_flag && !to_j_flag && to_i.signal == EGLOBALCOMMIT);
+    invariant j_behind_means_j_commit: j.writes < i.writes ==> (to_j_flag && !to_i_flag && to_j.signal == EGLOBALCOMMIT);
+    invariant equal_means_no_commit_or_both_commit: i.writes == j.writes ==> 
+        (to_i_flag && to_i.signal == EGLOBALCOMMIT && to_j_flag && to_j.signal == EGLOBALCOMMIT) ||
+        ((!to_i_flag || to_i.signal != EGLOBALCOMMIT) && (!to_j_flag || to_j.signal != EGLOBALCOMMIT));
+
+    invariant count_range : countPrepareResponses >= 0 && countPrepareResponses <= Common.participant_count;
+    invariant nothing_to_wait_for : countPrepareResponses == Common.participant_count ==> (state == WAITFORTRANSACTIONS);
+
+    invariant waiting_for_trans_means_no_outstanding_commit: state == WAITFORTRANSACTIONS ==> 
+        (!to_i_flag || to_i.signal != EGLOBALCOMMIT) && (!to_j_flag || to_j.signal != EGLOBALCOMMIT);
+
+    control {
+        v1 = verify(coordinator_WaitForTransactions);
+        v2 = verify(coordinator_WaitForPrepareResponses);
+        v3 = unroll(20);
+        check;
+        print_results;
+        v1.print_cex();
+        v2.print_cex();
+        v3.print_cex(
+            state,
+            to_i_flag,
+            to_i.signal,
+            to_j_flag,
+            to_j.signal,
+
+            i.writes,
+            j.writes
+        );
+    }
+}

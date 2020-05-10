@@ -1,0 +1,570 @@
+module Common {
+
+    type machine_id = integer;
+
+    const coordinator_id : machine_id;
+    axiom coordinator_id == 0;
+    const participant_i : machine_id;
+    const participant_j : machine_id;
+    axiom participant_i != participant_j;
+
+    const participant_count : machine_id;
+    axiom participant_count > 2;
+
+    type event_id   = integer;
+    type signal_t = enum { EWRITETRANSACTION, EPREPARESUCCESS, EPREPAREFAIL, EPREPARE, EGLOBALCOMMIT, EGLOBALABORT, ACT };
+    type event_t  = record {
+        signal: signal_t,
+        source: machine_id,
+        target: machine_id,
+        data: integer
+    };
+
+    type event_q = record { 
+        events  : [event_id]event_t,
+        head  : event_id, 
+        tail  : event_id,
+        size  : event_id
+    };
+
+    define head    () : event_id    = event_queue.head;
+    define tail    () : event_id    = event_queue.tail;
+    define size    () : event_id    = event_queue.size;
+    define signal (id : event_id)   : signal_t   = event_queue.events[id].signal;
+    define target (id : event_id)   : machine_id = event_queue.events[id].target;
+    define valid  (id : event_id)   : boolean    = id >= head() && id < tail();
+
+    // procedure [inline]s for event event_queues
+    procedure [inline] reset_events() 
+        modifies event_queue;
+    {
+        event_queue.head = 0;
+        event_queue.tail = 0;
+        event_queue.size = 0;
+    }
+
+    procedure [inline] push_event(e: event_t) 
+        modifies event_queue;
+    {
+        event_queue.events = event_queue.events[tail() -> e];
+        event_queue.tail = tail()  + 1;
+        event_queue.size = size() + 1;
+    }
+
+    procedure [inline] pop_event() 
+        returns (e: event_t)
+        modifies event_queue;  
+    {
+        e = event_queue.events[head()];
+
+        event_queue.head = head()  + 1;
+        event_queue.size = size() - 1;
+    }
+
+    sharedvar event_queue : event_q;
+
+    init {
+        call () = reset_events();
+    }
+
+    next {
+        if (*) {
+            var e : event_t;
+            call () = push_event(e);
+        } else {
+            var e : event_t;
+            assume(event_queue.size > 0);
+
+            call (e) = pop_event();
+        }
+    }
+
+    invariant coherent_events: size() == tail() - head();
+
+    control {
+        v = induction;
+        check;
+        print_results;
+    }
+}
+
+
+module Coordinator {
+    type * = Common.*;
+    type state_t = enum {WAITFORTRANSACTIONS, WAITFORPREPARERESPONSES};
+
+    var state : state_t;
+    var entry : boolean;
+    var countPrepareResponses : integer;
+    
+    sharedvar queue : event_q;
+
+    instance common : Common (event_queue : (queue));
+
+    procedure [inline] coordinator_WaitForTransactions(e: event_t)
+        modifies state, entry, common;
+        requires e.target == Common.coordinator_id;
+        requires e.signal == EWRITETRANSACTION;
+        requires state == WAITFORTRANSACTIONS;
+    {
+        if (e.signal == EWRITETRANSACTION) { 
+            var x : integer;
+            x = 1;
+            while (x <= Common.participant_count)
+                invariant x >= 1;
+                invariant queue.size >= 0 && queue.size == queue.tail - queue.head;
+            {
+                var w : event_t;
+                w.target = x;
+                w.source = Common.coordinator_id; 
+                w.signal = EPREPARE;
+                w.data = e.data;
+                call () = common.push_event(w);
+                x = x + 1;
+            }
+            entry = true;
+            state = WAITFORPREPARERESPONSES;
+        }
+    }
+
+    procedure [inline] coordinator_WaitForPrepareResponses(e: event_t)
+        modifies state, entry, countPrepareResponses, common;
+        requires e.target == Common.coordinator_id;
+        requires e.signal == EPREPARESUCCESS || e.signal == EPREPAREFAIL;
+        requires state == WAITFORPREPARERESPONSES;
+    {
+        case 
+        (entry) : {
+            countPrepareResponses = 0;
+            entry = false;
+        } 
+        (e.signal == EPREPARESUCCESS) : {
+            countPrepareResponses = countPrepareResponses + 1;
+            if (countPrepareResponses == Common.participant_count) {
+                var x : integer;
+                x = 1;
+                while (x <= Common.participant_count)
+                    invariant x >= 1;
+                    invariant queue.size >= 0 && queue.size == queue.tail - queue.head;
+                {
+                    var w : event_t;
+                    w.target = x;
+                    w.source = Common.coordinator_id; 
+                    w.signal = EGLOBALCOMMIT;
+                    call () = common.push_event(w);
+                    x = x + 1;
+                }
+                entry = true;
+                state = WAITFORTRANSACTIONS;
+            }
+        }
+        (e.signal == EPREPAREFAIL) : {
+            var x : integer;
+            x = 1;
+            while (x <= Common.participant_count)
+                invariant x >= 1;
+                invariant queue.size >= 0 && queue.size == queue.tail - queue.head;
+            {
+                var w : event_t;
+                w.target = x;
+                w.source = Common.coordinator_id; 
+                w.signal = EGLOBALABORT;
+                call () = common.push_event(w);
+                x = x + 1;
+            }
+            entry = true;
+            state = WAITFORTRANSACTIONS;
+        }
+        (true) : {
+            assert false;
+        }
+        esac
+    }
+
+    init {
+        call () = common.reset_events();
+        state = WAITFORTRANSACTIONS;
+        entry = true;
+        countPrepareResponses = 0;
+    }
+
+    next {
+        var e : event_t;
+        assume e.target == Common.coordinator_id;
+        assume e.signal == EWRITETRANSACTION;
+        case
+        (state == WAITFORTRANSACTIONS && entry) : {
+            call () = coordinator_WaitForTransactions(e);
+        }
+        esac
+    }
+
+    invariant coherent_events: queue.size >= 0 && queue.size == queue.tail - queue.head;
+
+    control {
+        v = induction;
+        check;
+        print_results;
+        v.print_cex(
+            queue.size,
+            queue.head,
+            queue.tail,
+            queue.events[queue.head].source,
+            queue.events[queue.head].target,
+            queue.events[queue.head].signal,
+            queue.events[queue.tail - 1].source,
+            queue.events[queue.tail - 1].target,
+            queue.events[queue.tail - 1].signal,
+
+            state
+        );
+    }
+}
+
+
+module Participant {
+    type * = Common.*;
+    type state_t = enum {WAITFORREQUESTS};
+
+    var state : state_t;
+    var entry : boolean;
+    var writes: integer;
+    var memory: [integer]integer;
+    
+    sharedvar queue : event_q;
+
+    instance common : Common (event_queue : (queue));
+
+    procedure [inline] participant_WaitForRequests(e: event_t)
+        modifies state, entry, writes, memory, common;
+        requires e.signal == EPREPARE || e.signal == EGLOBALCOMMIT || e.signal == EGLOBALABORT;
+
+        requires e.target > Common.coordinator_id && e.target <= Common.participant_count;
+        requires state == WAITFORREQUESTS;
+    {
+        case 
+        (e.signal == EPREPARE) : {
+            var w : event_t;
+            w.target = Common.coordinator_id;
+            w.source = e.target; 
+            if (*) {
+                memory = memory[writes -> e.data];
+                w.signal = EPREPARESUCCESS;
+                call () = common.push_event(w); 
+            } else {
+                w.signal = EPREPAREFAIL;
+                call () = common.push_event(w);  
+            }
+        }
+        (e.signal == EGLOBALCOMMIT) : {
+            writes = writes + 1;
+        }
+        (e.signal == EGLOBALABORT) : {
+            
+        }
+        (true) : {
+            assert false;
+        }
+        esac 
+    }
+
+    init {
+        call () = common.reset_events();
+        state = WAITFORREQUESTS;
+        entry = true;
+        writes = 0;
+    }
+
+    next {
+
+    }
+
+    invariant coherent_events: queue.size >= 0 && queue.size == queue.tail - queue.head;
+
+    control {
+        v = induction;
+        check;
+        print_results;
+        v.print_cex(
+            queue.size,
+            queue.head,
+            queue.tail,
+            queue.events[queue.head].source,
+            queue.events[queue.head].target,
+            queue.events[queue.head].signal,
+            queue.events[queue.tail - 1].source,
+            queue.events[queue.tail - 1].target,
+            queue.events[queue.tail - 1].signal,
+
+            state
+        );
+    }
+}
+
+module Rest {
+    type * = Common.*;
+    
+    sharedvar queue : event_q;
+
+    instance common : Common (event_queue : (queue));
+
+    procedure [inline] rest_WaitForRequests(e: event_t)
+        modifies common;
+        requires e.signal == EPREPARE ;
+        requires e.target > Common.coordinator_id && e.target <= Common.participant_count;
+    {
+        case 
+        (e.signal == EPREPARE) : {
+            var w : event_t;
+            w.target = Common.coordinator_id;
+            w.source = e.target;
+            if (*) {
+                w.signal = EPREPARESUCCESS;
+                call () = common.push_event(w); 
+            } else {
+                w.signal = EPREPAREFAIL;
+                call () = common.push_event(w);  
+            }
+        }
+        (true) : {
+            assert false;
+        }
+        esac 
+    }
+
+    init {
+        call () = common.reset_events();
+    }
+
+    next {
+        
+    }
+
+    invariant coherent_events: queue.size >= 0 && queue.size == queue.tail - queue.head;
+
+    control {
+        v = induction;
+        check;
+        print_results;
+        v.print_cex(
+            queue.size,
+            queue.head,
+            queue.tail,
+            queue.events[queue.head].source,
+            queue.events[queue.head].target,
+            queue.events[queue.head].signal,
+            queue.events[queue.tail - 1].source,
+            queue.events[queue.tail - 1].target,
+            queue.events[queue.tail - 1].signal
+        );
+    }
+}
+
+
+module main {
+
+    type * = Common.*;
+    type coordinator_state_t = Coordinator.state_t;
+    type participant_state_t = Participant.state_t;
+    
+    var qc : event_q;    
+    var qr : event_q;    
+    var qi : event_q;    
+    var qj : event_q;
+
+    instance c : Coordinator (queue : (qc));
+    instance r : Rest        (queue : (qr));
+    instance i : Participant (queue : (qi));
+    instance j : Participant (queue : (qj));
+
+    procedure [inline] communicate_qc() 
+        modifies qc, r, i, j;
+        requires qc.size > 0;
+    {
+        var e: event_t;
+        e = qc.events[qc.head];
+
+        qc.head = qc.head + 1;
+        qc.size = qc.size - 1;
+
+        case 
+        // (e.target == Common.coordinator_id) : {
+        //     case 
+        //     (c.state == WAITFORPREPARERESPONSES) : {
+        //         call () = c.coordinator_WaitForPrepareResponses(e);
+        //     }
+        //     esac
+        // } 
+        // (e.target == Common.participant_i) : {
+        //     case 
+        //     (i.state == WAITFORREQUESTS) : {
+        //         call () = i.participant_WaitForRequests(e);
+        //     }
+        //     esac
+        // }
+        (e.target == Common.participant_j) : {
+            case 
+            (j.state == WAITFORREQUESTS) : {
+                call () = j.participant_WaitForRequests(e);
+            }
+            esac
+        }
+        (e.target <= Common.participant_count) : {
+            call () = r.rest_WaitForRequests(e);
+        }
+        esac
+    }
+
+    procedure [inline] communicate_qr() 
+        modifies qr, c, i, j;
+        requires qr.size > 0;
+    {
+        var e: event_t;
+        e = qr.events[qr.head];
+
+        qr.head = qr.head + 1;
+        qr.size = qr.size - 1;
+
+        case 
+        (e.target == Common.coordinator_id) : {
+            case 
+            (c.state == WAITFORPREPARERESPONSES) : {
+                call () = c.coordinator_WaitForPrepareResponses(e);
+            }
+            esac
+        } 
+        (e.target == Common.participant_i) : {
+            case 
+            (i.state == WAITFORREQUESTS) : {
+                call () = i.participant_WaitForRequests(e);
+            }
+            esac
+        }
+        (e.target == Common.participant_j) : {
+            case 
+            (j.state == WAITFORREQUESTS) : {
+                call () = j.participant_WaitForRequests(e);
+            }
+            esac
+        }
+        // (e.target <= Common.participant_count) : {
+        //     call () = r.rest_WaitForRequests(e);
+        // }
+        esac
+    }
+
+    procedure [inline] communicate_qi() 
+        modifies qi, c, r, j;
+        requires qi.size > 0;
+    {
+        var e: event_t;
+        e = qi.events[qi.head];
+
+        qi.head = qi.head + 1;
+        qi.size = qi.size - 1;
+
+        case 
+        (e.target == Common.coordinator_id) : {
+            case 
+            (c.state == WAITFORPREPARERESPONSES) : {
+                call () = c.coordinator_WaitForPrepareResponses(e);
+            }
+            esac
+        } 
+        // (e.target == Common.participant_i) : {
+        //     case 
+        //     (i.state == WAITFORREQUESTS) : {
+        //         call () = i.participant_WaitForRequests(e);
+        //     }
+        //     esac
+        // }
+        (e.target == Common.participant_j) : {
+            case 
+            (j.state == WAITFORREQUESTS) : {
+                call () = j.participant_WaitForRequests(e);
+            }
+            esac
+        }
+        (e.target <= Common.participant_count) : {
+            call () = r.rest_WaitForRequests(e);
+        }
+        esac
+    }
+
+
+    procedure [inline] communicate_qj() 
+        modifies qj, c, r, i;
+        requires qj.size > 0;
+    {
+        var e: event_t;
+        e = qj.events[qj.head];
+
+        qj.head = qj.head + 1;
+        qj.size = qj.size - 1;
+
+        case 
+        (e.target == Common.coordinator_id) : {
+            case 
+            (c.state == WAITFORPREPARERESPONSES) : {
+                call () = c.coordinator_WaitForPrepareResponses(e);
+            }
+            esac
+        } 
+        (e.target == Common.participant_i) : {
+            case 
+            (i.state == WAITFORREQUESTS) : {
+                call () = i.participant_WaitForRequests(e);
+            }
+            esac
+        }
+        // (e.target == Common.participant_j) : {
+        //     case 
+        //     (j.state == WAITFORREQUESTS) : {
+        //         call () = j.participant_WaitForRequests(e);
+        //     }
+        //     esac
+        // }
+        (e.target <= Common.participant_count) : {
+            call () = r.rest_WaitForRequests(e);
+        }
+        esac
+    }
+
+    next {
+        if (*) {
+            // if (*) {
+            //     if (*) {
+                    assume qc.size > 0;
+                    call () = communicate_qc();
+            //     } else {
+            //         assume qr.size > 0;
+            //         call () = communicate_qr();
+            //     }
+            // } else {
+            //     if (*) {
+            //         assume qi.size > 0;
+            //         call () = communicate_qi();
+            //     } else {
+            //         assume qj.size > 0;
+            //         call () = communicate_qj();
+            //     }
+            // }
+        } else {
+            next(c);
+        }
+    }
+
+    invariant coherent_events: qc.size >= 0 && qc.size == qc.tail - qc.head;
+
+    control {
+        v = induction;
+        check;
+        print_results;
+        v.print_cex(
+             qc.size,
+             qc.events[qc.head].signal,
+             c.state,
+             c.entry
+        );
+    }
+}
