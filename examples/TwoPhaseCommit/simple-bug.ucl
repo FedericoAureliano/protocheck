@@ -56,9 +56,11 @@ module Participant {
                 if (*) {
                     memory = memory[writes -> inp.data];
                     w.signal = EPREPARESUCCESS;
+                    outp_flag = true;
                     outp = w;
                 } else {
                     w.signal = EPREPAREFAIL;
+                    outp_flag = true;
                     outp = w;
                 }
             }
@@ -311,8 +313,6 @@ module Coordinator {
         (i.writes == j.writes) || 
         (i.writes < j.writes && to_i_flag && to_i.signal == EGLOBALCOMMIT) ||
         (j.writes < i.writes && to_j_flag && to_j.signal == EGLOBALCOMMIT) ;
-
-    invariant waiting_means_no_from: state == WAITFORTRANSACTIONS ==> (!from_i_flag && !from_j_flag);
 
     control {
         v1 = verify(coordinator_WaitForTransactions);
