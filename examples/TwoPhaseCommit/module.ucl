@@ -4,9 +4,12 @@ module Common {
 
     const coordinator_id : machine_id;
     axiom coordinator_id == 0;
+
     const participant_i : machine_id;
     const participant_j : machine_id;
     axiom participant_i != participant_j;
+    axiom participant_i > 0 && participant_i <= participant_count;
+    axiom participant_j > 0 && participant_j <= participant_count;
 
     const participant_count : machine_id;
     axiom participant_count > 2;
@@ -116,16 +119,15 @@ module Coordinator {
 
     procedure [inline] coordinator_WaitForTransactions(e: event_t)
         modifies state, entry, common;
-        requires e.target == Common.coordinator_id;
-        requires e.signal == EWRITETRANSACTION;
-        requires state == WAITFORTRANSACTIONS;
+        // requires e.target == Common.coordinator_id;
+        // requires e.signal == EWRITETRANSACTION;
+        // requires state == WAITFORTRANSACTIONS;
     {
         if (e.signal == EWRITETRANSACTION) { 
             var x : integer;
             x = 1;
             while (x <= Common.participant_count)
                 invariant x >= 1;
-                invariant queue.size >= 0 && queue.size == queue.tail - queue.head;
             {
                 var w : event_t;
                 w.target = x;
@@ -142,9 +144,9 @@ module Coordinator {
 
     procedure [inline] coordinator_WaitForPrepareResponses(e: event_t)
         modifies state, entry, countPrepareResponses, common;
-        requires e.target == Common.coordinator_id;
-        requires e.signal == EPREPARESUCCESS || e.signal == EPREPAREFAIL;
-        requires state == WAITFORPREPARERESPONSES;
+        // requires e.target == Common.coordinator_id;
+        // requires e.signal == EPREPARESUCCESS || e.signal == EPREPAREFAIL;
+        // requires state == WAITFORPREPARERESPONSES;
     {
         if (entry) {
             countPrepareResponses = 0;
@@ -158,7 +160,6 @@ module Coordinator {
                 x = 1;
                 while (x <= Common.participant_count)
                     invariant x >= 1;
-                    invariant queue.size >= 0 && queue.size == queue.tail - queue.head;
                 {
                     var w : event_t;
                     w.target = x;
@@ -176,7 +177,6 @@ module Coordinator {
             x = 1;
             while (x <= Common.participant_count)
                 invariant x >= 1;
-                invariant queue.size >= 0 && queue.size == queue.tail - queue.head;
             {
                 var w : event_t;
                 w.target = x;
@@ -202,11 +202,7 @@ module Coordinator {
         var e : event_t;
         assume e.target == Common.coordinator_id;
         assume e.signal == EWRITETRANSACTION;
-        case
-        (state == WAITFORTRANSACTIONS && entry) : {
-            call () = coordinator_WaitForTransactions(e);
-        }
-        esac
+        call () = coordinator_WaitForTransactions(e);
     }
 
     invariant coherent_events: queue.size >= 0 && queue.size == queue.tail - queue.head;
@@ -247,10 +243,10 @@ module Participant {
 
     procedure [inline] participant_WaitForRequests(e: event_t)
         modifies state, entry, writes, memory, common;
-        requires e.signal == EPREPARE || e.signal == EGLOBALCOMMIT || e.signal == EGLOBALABORT;
+        // requires e.signal == EPREPARE || e.signal == EGLOBALCOMMIT || e.signal == EGLOBALABORT;
 
-        requires e.target > Common.coordinator_id && e.target <= Common.participant_count;
-        requires state == WAITFORREQUESTS;
+        // requires e.target > Common.coordinator_id && e.target <= Common.participant_count;
+        // requires state == WAITFORREQUESTS;
     {
         case 
         (e.signal == EPREPARE) : {
@@ -268,9 +264,9 @@ module Participant {
         }
         (e.signal == EGLOBALCOMMIT) : {
             writes = writes + 1;
+            // assert(false);
         }
         (e.signal == EGLOBALABORT) : {
-            
         }
         esac 
     }
@@ -317,7 +313,7 @@ module Rest {
 
     procedure [inline] rest_WaitForRequests(e: event_t)
         modifies common;
-        requires e.target > Common.coordinator_id && e.target <= Common.participant_count;
+        // requires e.target > Common.coordinator_id && e.target <= Common.participant_count;
     {
         case 
         (e.signal == EPREPARE) : {
@@ -370,6 +366,8 @@ module main {
     type participant_state_t = Participant.state_t;
     
     var queue : event_q;
+
+    define e_valid(id : event_id) : boolean = id >= queue.head && id < queue.tail;
 
     instance c : Coordinator (queue : (queue));
     instance r : Rest        (queue : (queue));
@@ -427,6 +425,8 @@ module main {
             call () = communicate();
         } else {
             if (*) {
+                //assume we wait before accepting next transaction
+                assume(queue.size == 0); 
                 next(c);
             } else {
                 if (*) {
@@ -445,6 +445,38 @@ module main {
     invariant same_memory: (forall (x : integer) :: (x >= 0 && x < i.writes && x < j.writes) 
         ==> i.memory[x] == j.memory[x]);
 
+    // auxilary invariants
+
+    invariant greater_writes_means_next_commit_balances: (i.writes > j.writes) ==> 
+        (exists (x : integer) :: 
+            (e_valid(x) && 
+            queue.events[x].signal == EGLOBALCOMMIT &&
+            queue.events[x].target == Common.participant_j &&
+            j.memory[j.writes] == queue.events[x].data) &&
+            (forall (y: integer) :: (e_valid(y) && queue.events[y].signal == EGLOBALCOMMIT && queue.events[y].target == Common.participant_i) 
+                ==> x <= y));
+
+    invariant greater_writes_means_next_commit_balances2: (j.writes > i.writes) ==> 
+        (exists (x : integer) :: 
+            (e_valid(x) && 
+            queue.events[x].signal == EGLOBALCOMMIT &&
+            queue.events[x].target == Common.participant_i &&
+            i.memory[i.writes] == queue.events[x].data) &&
+            (forall (y: integer) :: (e_valid(y) && queue.events[y].signal == EGLOBALCOMMIT && queue.events[y].target == Common.participant_j) 
+                ==> x <= y));
+
+    invariant close_writes: i.writes == j.writes || i.writes == j.writes + 1 || i.writes + 1 == j.writes;
+
+    invariant waittrans_means_no_prepares_or_tail_abort: c.state == WAITFORTRANSACTIONS ==> 
+        ((forall (x : integer) :: e_valid(x) ==> queue.events[x].signal != EPREPARE) || 
+        (queue.events[queue.tail - 1].signal == EGLOBALABORT));
+
+    invariant sequential_writes: (forall (x : integer) :: 
+        (e_valid(x) &&  e_valid(x + 1) && queue.events[x].signal == EPREPARE && queue.events[x+1].signal == EPREPARE) ==>
+            queue.events[x].data == queue.events[x+1].data);
+
+    invariant positive_writes: i.writes >= 0 && j.writes >= 0;
+
     control {
         v = induction;
         check;
@@ -452,13 +484,15 @@ module main {
         v.print_cex(
             c.state,
             c.entry,
-            i.state,
-            i.entry,
-            j.state,
-            j.entry,
             queue.size,
             queue.events[queue.head].signal,
-            queue.events[queue.head].target
+            queue.events[queue.head].target,
+            i.writes,
+            j.writes,
+
+            Common.participant_i,
+            Common.participant_j,
+            Common.participant_count
         );
     }
 }
