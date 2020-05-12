@@ -92,8 +92,15 @@ module Coordinator {
     procedure [inline] coordinator_WaitForTransactions()
         modifies state, entry, common;
         requires peek().target == Common.coordinator_id;
-        requires peek().signal == EWRITETRANSACTION;
         requires state == WAITFORTRANSACTIONS;
+        requires (forall (x : integer) :: (e_valid(x) && queue.events[x].target > Common.coordinator_id) ==>
+                    (queue.events[x].signal == EPREPARE || 
+                     queue.events[x].signal == EGLOBALCOMMIT || 
+                     queue.events[x].signal == EGLOBALABORT));
+        ensures (forall (x : integer) :: (e_valid(x) && queue.events[x].target > Common.coordinator_id) ==>
+                    (queue.events[x].signal == EPREPARE || 
+                     queue.events[x].signal == EGLOBALCOMMIT || 
+                     queue.events[x].signal == EGLOBALABORT));
     {
         var e : event_t;
         call (e) = common.pop_event();
@@ -126,6 +133,14 @@ module Coordinator {
         requires peek().target == Common.coordinator_id;
         requires peek().signal == EPREPARESUCCESS || peek().signal == EPREPAREFAIL;
         requires state == WAITFORPREPARERESPONSES;
+        requires (forall (x : integer) :: (e_valid(x) && queue.events[x].target > Common.coordinator_id) ==>
+                    (queue.events[x].signal == EPREPARE || 
+                     queue.events[x].signal == EGLOBALCOMMIT || 
+                     queue.events[x].signal == EGLOBALABORT));
+        ensures (forall (x : integer) :: (e_valid(x) && queue.events[x].target > Common.coordinator_id) ==>
+                    (queue.events[x].signal == EPREPARE || 
+                     queue.events[x].signal == EGLOBALCOMMIT || 
+                     queue.events[x].signal == EGLOBALABORT));
     {
         var e : event_t;
         call (e) = common.pop_event();
@@ -211,6 +226,8 @@ module Coordinator {
                      queue.events[x].signal == EGLOBALABORT));
 
     control {
+        verify(coordinator_WaitForTransactions);
+        verify(coordinator_WaitForPrepareResponses);
         v = induction;
         check;
         print_results;
@@ -458,17 +475,17 @@ module main {
         assume(active_r ==> (!active_i && !active_j && !active_c));
     }
 
-    invariant same_memory: (forall (x : integer) :: (x >= 0 && x < i.writes && x < j.writes) 
+    invariant same_memory: (forall (x : integer) :: (x >= 0 && x < i.writes || x < j.writes) 
         ==> i.memory[x] == j.memory[x]);
 
     // auxilary invariants
-    invariant same_writes: (c.state == WAITFORTRANSACTIONS && queue.size == 0) ==> i.writes == j.writes;
-    invariant close_invariants: i.writes == j.writes || i.writes == j.writes + 1 || i.writes + 1 == j.writes;
+    invariant close_writes: i.writes == j.writes || i.writes == j.writes + 1 || i.writes + 1 == j.writes;
+    invariant sync_writes: (c.state == WAITFORTRANSACTIONS && queue.size == 0) ==> i.writes == j.writes;
     invariant i_behind_means_i_commit: i.writes < j.writes ==> 
         ((exists (x : integer) :: e_valid(x) && 
             queue.events[x].signal == EGLOBALCOMMIT && 
             queue.events[x].target == Common.participant_i) &&
-        (i.memory[i.writes + 1] == j.memory[i.writes + 1]) &&
+        (i.memory[i.writes] == j.memory[i.writes]) &&
         (forall (y : integer) :: e_valid(y) ==> 
             queue.events[y].target != Common.participant_j)
         );
@@ -476,13 +493,47 @@ module main {
         ((exists (x : integer) :: e_valid(x) && 
             queue.events[x].signal == EGLOBALCOMMIT && 
             queue.events[x].target == Common.participant_j) &&
-        (j.memory[j.writes + 1] == i.memory[j.writes + 1]) &&
+        (j.memory[j.writes] == i.memory[j.writes]) &&
         (forall (y : integer) :: e_valid(y) ==> 
             queue.events[y].target != Common.participant_i)
         );
 
+    invariant even_means_both_or_neither_commit: i.writes == j.writes ==>
+        (((exists (x : integer) :: e_valid(x) && 
+            queue.events[x].signal == EGLOBALCOMMIT && 
+            queue.events[x].target == Common.participant_j) && 
+           (exists (x : integer) :: e_valid(x) && 
+            queue.events[x].signal == EGLOBALCOMMIT && 
+            queue.events[x].target == Common.participant_i)) ||
+         (forall (y : integer) :: e_valid(y) ==> 
+           ((queue.events[y].target != Common.participant_i && queue.events[y].target != Common.participant_j) || queue.events[y].signal != EGLOBALCOMMIT)));
+
+    // unique_commits: 
+    assume((forall (x : integer, y : integer) :: 
+        (e_valid(x) && e_valid(y) && queue.events[y].target == queue.events[x].target && queue.events[y].signal == EGLOBALCOMMIT && queue.events[x].signal == EGLOBALCOMMIT) ==> 
+        x == y));
+
+    // one write transaction at a time
+    assume((forall (x : integer, y : integer) :: 
+        (e_valid(x) && e_valid(y) && queue.events[y].signal == EWRITETRANSACTION && queue.events[x].signal == EWRITETRANSACTION) ==> 
+        x == y));
+
+    invariant only_ever_single_write :
+        (exists (x : integer) :: (e_valid(x) && 
+            queue.events[x].signal == EWRITETRANSACTION)) ==> queue.size == 1;
+
+    // invariant no_abort_means_no_more_events_than_can_count: 
+    assume(
+        ((forall (y : integer) :: e_valid(y) ==> 
+           (queue.events[y].signal != EGLOBALABORT)) ==> queue.size <= Common.participant_count - c.countPrepareResponses));
+
+    invariant no_abort_before_prep: 
+        (exists (x : integer) :: (e_valid(x) && 
+            queue.events[x].signal == EGLOBALABORT) ==> 
+                (forall (y: integer) :: (y > x && e_valid(y)) ==> (queue.events[x].signal != EPREPARE)));
+
     invariant count_range : c.countPrepareResponses >= 0 && c.countPrepareResponses <= Common.participant_count;
-    invariant nothing_to_wait_for : c.countPrepareResponses == Common.participant_count ==> (c.state == WAITFORTRANSACTIONS);
+    invariant nothing_to_wait_for : c.countPrepareResponses == Common.participant_count ==> (c.state == WAITFORTRANSACTIONS || c.entry);
 
     invariant not_commit_and_abort:
         (exists (x : integer) :: e_valid(x) && 
@@ -498,55 +549,67 @@ module main {
         (exists (x : integer) :: e_valid(x) && 
             queue.events[x].signal == EGLOBALABORT) ==> i.writes == j.writes;
 
-    invariant coherent_events: queue.size >= 0 && queue.size == queue.tail - queue.head;
+    invariant abort_means_wait_trans: 
+        (exists (x : integer) :: (e_valid(x) && 
+            queue.events[x].signal == EGLOBALABORT)) ==> c.state == WAITFORTRANSACTIONS;
 
-    invariant transactions_only_ever_empty: 
-        (exists (x : integer) :: e_valid(x) && 
+    invariant commit_means_wait_trans: 
+        (exists (x : integer) :: (e_valid(x) && 
+            queue.events[x].signal == EGLOBALCOMMIT)) ==> c.state == WAITFORTRANSACTIONS;
+
+
+    // Assumptions from submodules and message passing
+    assume(active_c && queue.size > 0 ==> peek().target == Common.coordinator_id);
+    assume(active_i && queue.size > 0 ==> peek().target == Common.participant_i);
+    assume(active_j && queue.size > 0 ==> peek().target == Common.participant_j);
+    assume(active_r && queue.size > 0 ==> (peek().target > Common.coordinator_id && peek().target <= Common.participant_count));
+
+    assume(forall (x : integer, y : integer) :: 
+        (e_valid(x) && e_valid(y) && queue.events[x].signal == EPREPARE &&  queue.events[y].signal == EPREPARE) ==>
+            (queue.events[x].data == queue.events[y].data));
+
+    assume(queue.size >= 0 && queue.size == queue.tail - queue.head);
+    assume(queue.head >= 0);
+
+    assume((exists (x : integer) :: e_valid(x) && 
             queue.events[x].signal == EWRITETRANSACTION && 
             queue.events[x].target == Common.coordinator_id) ==>
-                (queue.size == 1);
+                (queue.size == 1));
 
-    invariant coordinator_wait_trans_means_trans: (c.state == WAITFORTRANSACTIONS && queue.size > 0 && peek().target == Common.coordinator_id) ==>
-        peek().signal == EWRITETRANSACTION;
+    assume((forall (x : integer) :: (c.state == WAITFORPREPARERESPONSES && e_valid(x) && queue.events[x].target == Common.coordinator_id) ==>
+                    (queue.events[x].signal == EPREPARESUCCESS || 
+                     queue.events[x].signal == EPREPAREFAIL)));
 
-    invariant writetrans_meant_for_coordinator: (peek().signal == EWRITETRANSACTION && queue.size > 0) ==> 
-        (peek().target == Common.coordinator_id && c.state == WAITFORTRANSACTIONS);
-
-    invariant success_meant_for_coordinator: (peek().signal == EPREPARESUCCESS && queue.size > 0) ==> 
-        (peek().target == Common.coordinator_id && c.state == WAITFORPREPARERESPONSES);
-
-    invariant fail_meant_for_coordinator: (peek().signal == EPREPAREFAIL && queue.size > 0) ==> 
-        (peek().target == Common.coordinator_id && c.state == WAITFORPREPARERESPONSES);
-
-    invariant coordinator_wait_prep_means_success_or_fail: (c.state == WAITFORPREPARERESPONSES && queue.size > 0 && peek().target == Common.coordinator_id) ==>
-        (peek().signal == EPREPARESUCCESS || peek().signal == EPREPAREFAIL);
-
-    invariant participant_events: (forall (x : integer) :: (e_valid(x) && queue.events[x].target > Common.coordinator_id) ==>
+    assume((forall (x : integer) :: (e_valid(x) && queue.events[x].target > Common.coordinator_id) ==>
                     (queue.events[x].signal == EPREPARE || 
                      queue.events[x].signal == EGLOBALCOMMIT || 
-                     queue.events[x].signal == EGLOBALABORT));
+                     queue.events[x].signal == EGLOBALABORT)));
 
-    invariant prep_meant_for_others: (forall (x : integer) :: (e_valid(x) && queue.events[x].signal == EPREPARE) ==>
-                    (queue.events[x].target > Common.coordinator_id));
+    assume((forall (x : integer) :: (e_valid(x) && queue.events[x].signal == EPREPARE) ==>
+                    (queue.events[x].target > Common.coordinator_id)));
 
-    invariant commit_meant_for_others: (forall (x : integer) :: (e_valid(x) && queue.events[x].signal == EGLOBALCOMMIT) ==>
-                    (queue.events[x].target > Common.coordinator_id));
+    assume((forall (x : integer) :: (e_valid(x) && queue.events[x].signal == EGLOBALCOMMIT) ==>
+                    (queue.events[x].target > Common.coordinator_id)));
         
-    invariant abort_meant_for_others: (forall (x : integer) :: (e_valid(x) && queue.events[x].signal == EGLOBALABORT) ==>
-                    (queue.events[x].target > Common.coordinator_id));
+    assume((forall (x : integer) :: (e_valid(x) && queue.events[x].signal == EGLOBALABORT) ==>
+                    (queue.events[x].target > Common.coordinator_id)));
 
-    invariant ids: i.id > Common.coordinator_id && i.id <= Common.participant_count && 
+    assume(i.id > Common.coordinator_id && i.id <= Common.participant_count && 
                    j.id > Common.coordinator_id && j.id <= Common.participant_count &&
                    i.id != j.id &&
-                   Common.coordinator_id == 0;
+                   Common.coordinator_id == 0);
 
-    invariant positive_writes: i.writes >= 0 && j.writes >= 0;
+    assume(i.writes >= 0 && j.writes >= 0);
 
     control {
-        v = unroll(5);
+        v = induction;
         check;
         print_results;
         v.print_cex(
+            Common.participant_i,
+            Common.participant_j,
+            Common.participant_count,
+
             c.state,
             c.entry,
             c.countPrepareResponses,
@@ -554,15 +617,12 @@ module main {
             queue.size,
             queue.head,
             queue.tail,
-            queue.events[queue.head].signal,
-            queue.events[queue.head].target,
+            queue.events,
 
             i.writes,
             j.writes,
-
-            Common.participant_i,
-            Common.participant_j,
-            Common.participant_count
+            i.memory,
+            j.memory
         );
     }
 }
