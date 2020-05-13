@@ -156,10 +156,7 @@ module Coordinator {
                 x = 1;
                 while (x <= Common.participant_count)
                     invariant x >= 1;
-                    invariant (forall (x : integer) :: (e_valid(x) && queue.events[x].target > Common.coordinator_id) ==>
-                    (queue.events[x].signal == EPREPARE || 
-                     queue.events[x].signal == EGLOBALCOMMIT || 
-                     queue.events[x].signal == EGLOBALABORT));
+                    invariant (forall (y : integer) :: (y >= 1 && y < x) ==> (exists (z : integer) :: (e_valid(z) && queue.events[z].target == y && queue.events[z].signal == EGLOBALCOMMIT)));
                 {
                     var w : event_t;
                     w.target = x;
@@ -170,6 +167,7 @@ module Coordinator {
                 }
                 entry = true;
                 state = WAITFORTRANSACTIONS;
+                countPrepareResponses = 0;
             }
         }
         (e.signal == EPREPAREFAIL) : {
@@ -177,10 +175,7 @@ module Coordinator {
             x = 1;
             while (x <= Common.participant_count)
                 invariant x >= 1;
-                invariant (forall (x : integer) :: (e_valid(x) && queue.events[x].target > Common.coordinator_id) ==>
-                    (queue.events[x].signal == EPREPARE || 
-                     queue.events[x].signal == EGLOBALCOMMIT || 
-                     queue.events[x].signal == EGLOBALABORT));
+                invariant (forall (y : integer) :: (y >= 1 && y < x) ==> (exists (z : integer) :: (e_valid(z) && queue.events[z].target == y && queue.events[z].signal == EGLOBALABORT)));
             {
                 var w : event_t;
                 w.target = x;
@@ -191,6 +186,7 @@ module Coordinator {
             }
             entry = true;
             state = WAITFORTRANSACTIONS;
+            countPrepareResponses = 0;
         }
         esac
     }
@@ -513,7 +509,7 @@ module main {
         (e_valid(x) && e_valid(y) && queue.events[y].target == queue.events[x].target && queue.events[y].signal == EGLOBALCOMMIT && queue.events[x].signal == EGLOBALCOMMIT) ==> 
         x == y));
 
-    // one write transaction at a time
+    // one_write_transaction_at_a_time
     assume((forall (x : integer, y : integer) :: 
         (e_valid(x) && e_valid(y) && queue.events[y].signal == EWRITETRANSACTION && queue.events[x].signal == EWRITETRANSACTION) ==> 
         x == y));
@@ -522,18 +518,24 @@ module main {
         (exists (x : integer) :: (e_valid(x) && 
             queue.events[x].signal == EWRITETRANSACTION)) ==> queue.size == 1;
 
-    // invariant no_abort_means_no_more_events_than_can_count: 
-    assume(
+    invariant no_abort_means_no_more_events_than_can_count: 
         ((forall (y : integer) :: e_valid(y) ==> 
-           (queue.events[y].signal != EGLOBALABORT)) ==> queue.size <= Common.participant_count - c.countPrepareResponses));
+           (queue.events[y].signal != EGLOBALABORT)) ==> queue.size <= Common.participant_count - c.countPrepareResponses) || (queue.size  == 1 && peek().signal == EWRITETRANSACTION);
 
     invariant no_abort_before_prep: 
         (exists (x : integer) :: (e_valid(x) && 
             queue.events[x].signal == EGLOBALABORT) ==> 
                 (forall (y: integer) :: (y > x && e_valid(y)) ==> (queue.events[x].signal != EPREPARE)));
 
+    invariant abort_always_last: 
+        (exists (x : integer) :: (e_valid(x) && 
+            queue.events[x].signal == EGLOBALABORT)) ==> 
+                (forall (y: integer) :: (y >= queue.tail || queue.events[y].signal == EGLOBALABORT));
+
     invariant count_range : c.countPrepareResponses >= 0 && c.countPrepareResponses <= Common.participant_count;
-    invariant nothing_to_wait_for : c.countPrepareResponses == Common.participant_count ==> (c.state == WAITFORTRANSACTIONS || c.entry);
+    // invariant nothing_to_wait_for : c.countPrepareResponses == Common.participant_count ==> (c.state == WAITFORTRANSACTIONS || c.entry);
+    invariant wait_means_no_count: c.state == WAITFORTRANSACTIONS ==> c.countPrepareResponses == 0;
+
 
     invariant not_commit_and_abort:
         (exists (x : integer) :: e_valid(x) && 
@@ -556,7 +558,6 @@ module main {
     invariant commit_means_wait_trans: 
         (exists (x : integer) :: (e_valid(x) && 
             queue.events[x].signal == EGLOBALCOMMIT)) ==> c.state == WAITFORTRANSACTIONS;
-
 
     // Assumptions from submodules and message passing
     assume(active_c && queue.size > 0 ==> peek().target == Common.coordinator_id);
